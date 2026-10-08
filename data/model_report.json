@@ -1,0 +1,123 @@
+{
+  "dataset": "PhiUSIIL_Phishing_URL_Dataset.csv",
+  "filas": 235370,
+  "duplicadas_descartadas": 425,
+  "features": [
+    "num_dots",
+    "num_dashes",
+    "num_subdomains",
+    "is_ip",
+    "has_at",
+    "digit_ratio",
+    "host_entropy",
+    "short_host",
+    "host_len",
+    "domain_label_len",
+    "tld_len",
+    "num_labels",
+    "max_label_len",
+    "digits_in_host",
+    "longest_digit_run",
+    "hyphens_in_domain",
+    "hyphen_in_subdomain",
+    "digit_in_subdomain",
+    "subdomain_len",
+    "vowel_ratio",
+    "longest_consonant_run",
+    "domain_entropy",
+    "tld_com",
+    "tld_org_net_edu_gov",
+    "multi_level_suffix"
+  ],
+  "cv": {
+    "regresion_logistica": {
+      "accuracy": 0.804244120754349,
+      "precision": 0.8366383742726299,
+      "recall": 0.6497013158542143,
+      "f1": 0.7305041292949563,
+      "auc": 0.8472563021903221,
+      "f1_std": 0.03460272417544717
+    },
+    "random_forest": {
+      "accuracy": 0.8163823433945376,
+      "precision": 0.871686092402381,
+      "recall": 0.6475422720469799,
+      "f1": 0.7424488833938878,
+      "auc": 0.8584521222601094,
+      "f1_std": 0.03517598084704612
+    }
+  },
+  "test": {
+    "regresion_logistica": {
+      "accuracy": 0.8352158321667593,
+      "precision": 0.8900200812590482,
+      "recall": 0.7533997469955724,
+      "f1": 0.8160311717227943,
+      "auc": 0.8865582860151404
+    },
+    "random_forest": {
+      "accuracy": 0.8485051872590945,
+      "precision": 0.9192615443941,
+      "recall": 0.7539136622390892,
+      "f1": 0.8284175318187742,
+      "auc": 0.8976414415511694
+    }
+  },
+  "matriz_confusion_test": {
+    "regresion_logistica": [
+      [
+        24496,
+        2355
+      ],
+      [
+        6238,
+        19058
+      ]
+    ],
+    "random_forest": [
+      [
+        25176,
+        1675
+      ],
+      [
+        6225,
+        19071
+      ]
+    ]
+  },
+  "modelo_elegido": "random_forest",
+  "baseline_subdominio_test": {
+    "accuracy": 0.8146202082574261,
+    "precision": 0.9593252218891436,
+    "recall": 0.6452008222643896,
+    "f1": 0.7715143350114633,
+    "auc": 0.8097144850959205
+  },
+  "importancia_features": {
+    "num_dots": 0.054001840894065525,
+    "num_dashes": 0.020512315752648454,
+    "num_subdomains": 0.24236887179754837,
+    "is_ip": 0.0004093716802775496,
+    "has_at": 0.0,
+    "digit_ratio": 0.03317776366480655,
+    "host_entropy": 0.02985045270563603,
+    "short_host": 0.0013851309273975772,
+    "host_len": 0.03568033760332768,
+    "domain_label_len": 0.021498076894538934,
+    "tld_len": 0.04289464556903342,
+    "num_labels": 0.04152664332731013,
+    "max_label_len": 0.01935322248751661,
+    "digits_in_host": 0.02838094023450532,
+    "longest_digit_run": 0.049020239671723864,
+    "hyphens_in_domain": 0.01581511239816359,
+    "hyphen_in_subdomain": 0.016281816359007426,
+    "digit_in_subdomain": 0.0072362024449903525,
+    "subdomain_len": 0.19306898503897243,
+    "vowel_ratio": 0.02341482351762153,
+    "longest_consonant_run": 0.016983857496156437,
+    "domain_entropy": 0.021485201975643107,
+    "tld_com": 0.019077765766894208,
+    "tld_org_net_edu_gov": 0.03716737498683214,
+    "multi_level_suffix": 0.02940900680538287
+  }
+}

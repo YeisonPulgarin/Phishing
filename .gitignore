@@ -1,0 +1,6 @@
+.venv/
+.env
+phishing.db
+pycache/
+*.pyc
+.pytest_cache/

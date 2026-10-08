@@ -1,0 +1,17 @@
+meta {
+  name: Validar API key (login UI)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/auth
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "api_key": "dev-key"
+  }
+}

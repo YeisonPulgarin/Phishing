@@ -1,0 +1,20 @@
+meta {
+  name: Obtener análisis por id
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/analyses/:id
+  body: none
+  auth: apikey
+}
+
+params:path {
+  id: 1
+}
+
+auth:apikey {
+  key: X-API-Key
+  value: {{apiKey}}
+}

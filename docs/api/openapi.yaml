@@ -1,0 +1,330 @@
+openapi: "3.1.0"
+info:
+  title: Pishing Detector API
+  description: API que analiza una URL y determina si es phishing, devolviendo veredicto, score, confianza y desglose de motivos.
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: analisis
+    description: Análisis de URLs
+  - name: auth
+    description: Autenticación
+  - name: sistema
+    description: Operaciones del sistema
+
+paths:
+  /api/analyze:
+    post:
+      tags: [analisis]
+      summary: Analizar una URL
+      description: Determina si la URL es phishing. Requiere API key.
+      operationId: analizar_url
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRequest"
+      responses:
+        "200":
+          description: Análisis completado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisReport"
+        "401":
+          description: API key inválida o ausente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: URL inválida o vacía
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+
+  /api/explain:
+    post:
+      tags: [analisis]
+      summary: Explicación SHAP de la predicción del modelo ML
+      description: Contribución de cada característica del dominio a la probabilidad de phishing (puntos porcentuales).
+      security: [{ApiKeyAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnalyzeRequest" }
+      responses:
+        "200": { description: Explicación calculada }
+        "401": { description: API key inválida }
+        "503": { description: Modelo de ML no disponible }
+  /api/analyze-email:
+    post:
+      tags: [analisis]
+      summary: Analiza un correo electrónico
+      description: Envía el correo completo en `raw` (formato .eml) o los campos sueltos `subject`, `sender` y `body`. Debe venir `raw` o `body`.
+      security: [{ApiKeyAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                raw: { type: string, maxLength: 300000 }
+                subject: { type: string, maxLength: 1000 }
+                sender: { type: string, maxLength: 500 }
+                body: { type: string, maxLength: 200000 }
+      responses:
+        "200": { description: "Veredicto (seguro, sospechoso, phishing), score, motivos, enlaces y dominio del remitente analizados" }
+        "401": { description: API key inválida }
+        "422": { description: Entrada vacía o demasiado larga }
+  /api/analyze-message:
+    post:
+      tags: [analisis]
+      summary: Analiza un mensaje de texto (SMS, chat)
+      security: [{ApiKeyAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 5000 }
+      responses:
+        "200": { description: Veredicto, score, motivos y enlaces analizados }
+        "401": { description: API key inválida }
+        "422": { description: Mensaje vacío o demasiado largo }
+  /api/evaluation:
+    get:
+      tags: [analisis]
+      summary: Reportes de evaluación y entrenamiento del modelo
+      description: Devuelve `evaluacion` (scripts/evaluate.py), `modelo` (scripts/train_model.py) y las etiquetas en español de cada característica. Los reportes que no existen vienen como null.
+      security: [{ApiKeyAuth: []}]
+      responses:
+        "200": { description: Reportes disponibles }
+        "401": { description: API key inválida }
+  /api/analyses:
+    get:
+      tags: [analisis]
+      summary: Listar historial de análisis
+      description: Devuelve el historial de análisis persistido. Requiere API key.
+      operationId: listar_analisis
+      security:
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Lista de análisis
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Analysis"
+        "401":
+          description: API key inválida o ausente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/analyses/{analysis_id}:
+    get:
+      tags: [analisis]
+      summary: Obtener un análisis por id
+      description: Devuelve un análisis puntual. Requiere API key.
+      operationId: obtener_analisis
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: analysis_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Análisis encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+        "401":
+          description: API key inválida o ausente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Análisis no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth:
+    post:
+      tags: [auth]
+      summary: Validar API key
+      description: Valida la API key provista por la UI para iniciar sesión.
+      operationId: validar_api_key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRequest"
+      responses:
+        "200":
+          description: API key válida
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: API key inválida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: api_key ausente o vacía
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+
+  /health:
+    get:
+      tags: [sistema]
+      summary: Health check
+      operationId: health_check
+      responses:
+        "200":
+          description: Servicio en pie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+components:
+  schemas:
+    AnalyzeRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          example: "https://login.secure-bank.evil.tk/verify"
+    AuthRequest:
+      type: object
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+          example: "dev-key"
+    AnalysisReport:
+      type: object
+      required: [url, veredicto, score, confianza, motivos, desglose]
+      properties:
+        url:
+          type: string
+        veredicto:
+          type: string
+          enum: [seguro, sospechoso, phishing]
+        score:
+          type: number
+          format: double
+        confianza:
+          type: number
+          format: double
+        motivos:
+          type: array
+          items:
+            type: string
+        desglose:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+    Analysis:
+      type: object
+      required: [id, url, veredicto, score, confianza, motivos, desglose, source, created_at]
+      properties:
+        id:
+          type: integer
+        url:
+          type: string
+        veredicto:
+          type: string
+          enum: [seguro, sospechoso, phishing]
+        score:
+          type: number
+          format: double
+        confianza:
+          type: number
+          format: double
+        motivos:
+          type: array
+          items:
+            type: string
+        desglose:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+        source:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"
+    ValidationError:
+      type: object
+      required: [loc, msg, type]
+      properties:
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

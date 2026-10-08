@@ -1,0 +1,143 @@
+# Dominios de alta reputación (lista semilla). Un dominio registrado por línea.
+# Solo dominios oficiales de marcas muy conocidas. NO agregar plataformas que alojan contenido
+# de terceros (github.io, web.app, blogspot.com...) ni acortadores: se ignoran de todos modos.
+# Para ampliar con el ranking público Tranco:  python scripts/update_known_domains.py
+
+# Buscadores, correo y nube
+google.com
+youtube.com
+gmail.com
+microsoft.com
+live.com
+outlook.com
+office.com
+microsoftonline.com
+windows.com
+bing.com
+msn.com
+skype.com
+apple.com
+icloud.com
+amazon.com
+amazon.es
+amazon.co.uk
+amazon.de
+cloudflare.com
+dropbox.com
+adobe.com
+salesforce.com
+atlassian.com
+slack.com
+zoom.us
+notion.so
+
+# Redes sociales y mensajería
+facebook.com
+instagram.com
+whatsapp.com
+meta.com
+messenger.com
+twitter.com
+x.com
+linkedin.com
+tiktok.com
+snapchat.com
+pinterest.com
+reddit.com
+telegram.org
+discord.com
+twitch.tv
+
+# Desarrollo, conocimiento e IA
+github.com
+gitlab.com
+bitbucket.org
+stackoverflow.com
+stackexchange.com
+wikipedia.org
+wikimedia.org
+mozilla.org
+python.org
+pypi.org
+npmjs.com
+nodejs.org
+openai.com
+anthropic.com
+claude.ai
+huggingface.co
+kaggle.com
+
+# Comercio y entretenimiento
+paypal.com
+ebay.com
+aliexpress.com
+mercadolibre.com
+mercadolibre.com.co
+mercadopago.com
+netflix.com
+spotify.com
+disneyplus.com
+rappi.com
+falabella.com
+falabella.com.co
+exito.com
+
+# Hardware y tecnología
+samsung.com
+sony.com
+hp.com
+dell.com
+lenovo.com
+cisco.com
+intel.com
+nvidia.com
+amd.com
+oracle.com
+ibm.com
+
+# Pagos y bancos
+visa.com
+mastercard.com
+americanexpress.com
+wellsfargo.com
+bankofamerica.com
+chase.com
+citi.com
+hsbc.com
+santander.com
+bbva.com
+bbva.es
+bbva.com.co
+bancolombia.com
+davivienda.com
+bancodebogota.com
+bancopopular.com.co
+avvillas.com.co
+nequi.com.co
+daviplata.com
+itau.co
+scotiabankcolpatria.com
+bancoomeva.com.co
+bancocajasocial.com
+
+# Mensajería y transporte
+dhl.com
+fedex.com
+ups.com
+usps.com
+servientrega.com
+interrapidisimo.com
+coordinadora.com
+
+# Telecomunicaciones (Colombia)
+claro.com.co
+movistar.com.co
+tigo.com.co
+
+# Entidades públicas y organismos
+dian.gov.co
+registraduria.gov.co
+mintic.gov.co
+nasa.gov
+un.org
+who.int

@@ -1,0 +1,22 @@
+meta {
+  name: Analizar URL
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/analyze
+  body: json
+  auth: apikey
+}
+
+auth:apikey {
+  key: X-API-Key
+  value: {{apiKey}}
+}
+
+body:json {
+  {
+    "url": "https://login.secure-bank.evil.tk/verify"
+  }
+}
