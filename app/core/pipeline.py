@@ -6,6 +6,7 @@ conector que falla o no está disponible se omite sin romper el análisis.
 """
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,10 @@ class AnalysisReport:
     confianza: float
     motivos: List[str] = field(default_factory=list)
     desglose: Dict[str, float] = field(default_factory=dict)
+    # Motivos agrupados por motor o conector (para mostrarlos por fuente en la UI).
+    motivos_por_motor: Dict[str, List[str]] = field(default_factory=dict)
+    # Tiempo total del análisis en milisegundos (se muestra en la interfaz).
+    tiempo_ms: int = 0
 
 
 def normalize_url(url: str) -> str:
@@ -84,6 +89,7 @@ class AnalysisPipeline:
         ]
 
     def analyze(self, url: str) -> AnalysisReport:
+        started = time.perf_counter()
         normalized = normalize_url(url)
         ctx = AnalysisContext.from_url(normalized)
 
@@ -103,19 +109,27 @@ class AnalysisPipeline:
 
         sub_scores: Dict[str, float] = {}
         motivos: List[str] = []
+        por_motor: Dict[str, List[str]] = {}
+
+        def note(name: str, items: List[str]) -> None:
+            if not items:
+                return
+            motivos.extend(items)
+            por_motor.setdefault(name, []).extend(items)
+
         for kind, obj, fut in futures:
             if kind == "disabled":
-                motivos.append(f"{obj.name} no disponible (sin API key)")
+                note(obj.name, [f"{obj.name} no disponible (sin API key)"])
                 continue
             if not fut.done():
-                motivos.append(f"{obj.name} no respondió a tiempo y se omitió")
+                note(obj.name, [f"{obj.name} no respondió a tiempo y se omitió"])
                 continue
             try:
                 result = fut.result()
             except Exception:
                 # Un motor o conector que lanza excepción se omite en silencio.
                 continue
-            motivos.extend(result.motivos if kind == "engine" or result.estado == EngineStatus.OK else [])
+            note(obj.name, result.motivos if kind == "engine" or result.estado == EngineStatus.OK else [])
             if result.estado == EngineStatus.OK:
                 sub_scores[obj.name] = result.normalized_score
 
@@ -130,4 +144,6 @@ class AnalysisPipeline:
             confianza=out.confianza,
             motivos=motivos,
             desglose=sub_scores,
+            motivos_por_motor=por_motor,
+            tiempo_ms=int((time.perf_counter() - started) * 1000),
         )

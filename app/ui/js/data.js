@@ -28,6 +28,31 @@ export const COMPONENT_NAMES = {
   enlaces: "Enlaces del mensaje", remitente: "Dominio del remitente", senales_mensaje: "Señales del mensaje",
 };
 
+/* Orden en que se muestran los motivos agrupados por fuente. */
+export const ENGINE_ORDER = ["heuristica", "ml", "red", "google_safe_browsing", "virustotal"];
+
+/* A qué parte de la URL corresponde cada motivo, para anotarlo debajo de esa parte en la
+   disección del enlace. El orden importa: gana la primera regla que coincide. */
+const PART_RULES = [
+  [/HTTPS/i, "esquema"],
+  [/oculta el host/i, "usuario"],
+  [/imita una marca/i, "dominio"],
+  [/subdominio|parecerse/i, "subdominio"],
+  [/credenciales|contrase|WordPress/i, "ruta"],
+  [/dirección IP|\bTLD\b|Guiones|acortador|asemeja|DNS|registró|reciente|certificado|[Rr]edirige|hosting|RDAP|reputación/, "dominio"],
+];
+
+/* Nombre legible de cada parte de la URL (y el orden en que se arma la dirección). */
+export const PART_LABELS = {
+  esquema: "protocolo", usuario: "usuario", subdominio: "subdominio",
+  dominio: "dominio real", puerto: "puerto", ruta: "ruta",
+};
+
+export function partFor(motivo) {
+  for (const [re, role] of PART_RULES) if (re.test(motivo)) return role;
+  return null;
+}
+
 export const SYSTEMS = [
   { key: "heuristica_url_completa", name: "Reglas (URL completa)", dash: false },
   { key: "heuristica_solo_dominio", name: "Reglas (solo dominio)", dash: true },

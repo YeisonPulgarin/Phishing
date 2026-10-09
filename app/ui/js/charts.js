@@ -42,6 +42,24 @@ export function gauge(score) {
   return h("div", { class: "gauge" }, svg, h("div", { class: "gauge-score" }, number, h("small", {}, " /100")));
 }
 
+/* Escala lineal 0–100 con las tres zonas y un marcador que se desliza hasta el puntaje.
+   Complementa al velocímetro: ubica el puntaje dentro de las bandas Seguro/Sospechoso/Phishing. */
+export function riskScale(score) {
+  const value = Math.max(0, Math.min(100, Number(score) || 0));
+  const track = h("div", { class: "scale-track" },
+    h("i", { class: "b-ok", vars: { "--w": `${BANDS.sospechoso}%` } }),
+    h("i", { class: "b-warn", vars: { "--w": `${BANDS.phishing - BANDS.sospechoso}%` } }),
+    h("i", { class: "b-bad", vars: { "--w": `${100 - BANDS.phishing}%` } }));
+  const marker = h("div", { class: "scale-marker", vars: { "--x": "0%" } });
+  animateVar(marker, "--x", `${value}%`);
+  return h("div", { class: "scale", role: "img", "aria-label": `Puntaje ${Math.round(value)} de 100 en la escala de riesgo` },
+    h("div", { class: "scale-rail" }, track, marker),
+    h("div", { class: "scale-labels" },
+      h("span", {}, "Seguro 0–", String(BANDS.sospechoso - 1)),
+      h("span", {}, "Sospechoso ", String(BANDS.sospechoso), "–", String(BANDS.phishing - 1)),
+      h("span", {}, "Phishing ", String(BANDS.phishing), "–100")));
+}
+
 /* Fila de barra horizontal. `left` y `width` van de 0 a 100 (% del carril). */
 function barRow({ label, hint, valueText, left = 0, width, zero = null, kind = "" }) {
   const fill = h("div", { class: `fill ${kind}`.trim(), vars: { "--l": `${left}%`, "--w": "0%" } });

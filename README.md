@@ -69,8 +69,12 @@ dirección que la API, sin segundo proceso). Se ingresa con la clave API del `.e
 (`PD_API_KEYS`) y tiene cuatro secciones:
 
 - **Analizar:** enlace, correo (campos o archivo `.eml`) o SMS, con ejemplos para probar. Muestra
-  la categoría, un indicador de riesgo de 0 a 100, qué hacer, los motivos en lenguaje simple,
-  cómo se compone el puntaje y la explicación SHAP del modelo.
+  la categoría, un indicador de riesgo de 0 a 100 (velocímetro y escala con marcador), qué hacer,
+  y para los enlaces una **disección "Así se lee este enlace"** que separa la URL en sus partes
+  (protocolo, subdominio, dominio real, ruta) y pone cada señal debajo de la parte que la provoca.
+  Los motivos se agrupan por la fuente que los encontró (reglas, modelo de IA, red, servicios),
+  junto con cómo se compone el puntaje y la explicación SHAP del modelo. Cada resultado se puede
+  copiar como resumen y relanzar con "Analizar otro".
 - **Historial:** análisis guardados con filtros, detalle de cada uno y descarga en CSV.
 - **Evaluación:** reglas vs modelo de IA vs combinado (tabla, métricas, curvas ROC, matriz de
   confusión), comparación de modelos y limitaciones.

@@ -2,8 +2,8 @@
 import { h, clear, icon, alertBox, $ } from "./dom.js";
 import * as charts from "./charts.js";
 import {
-  BANDS, COMPONENT_NAMES, METRICS, MODEL_NAMES, SYSTEMS, THRESHOLDS, VERDICTS,
-  fmtDate, num3, pct, splitReasons, verdictInfo, verdictKey,
+  BANDS, COMPONENT_NAMES, ENGINE_ORDER, METRICS, MODEL_NAMES, PART_LABELS, SYSTEMS, THRESHOLDS, VERDICTS,
+  fmtDate, num3, partFor, pct, splitReasons, verdictInfo, verdictKey,
 } from "./data.js";
 
 const pill = (v) => (v ? h("span", { class: `pill v-${verdictKey(v)}` }, verdictInfo(v).titulo) : h("span", { class: "pill none" }, "Sin dato"));
@@ -72,22 +72,121 @@ function linksTable(enlaces) {
     h("tbody", {}, rows)));
 }
 
+/* Líneas que son avisos técnicos, no señales de riesgo: se muestran atenuadas. */
+const QUIET = /no disponible|no respondió|sin señales/i;
+
+/* "¿Por qué?" agrupado por la fuente que encontró cada señal (reglas, modelo, red, servicios). */
+function reasonsByEngine(porMotor, desglose) {
+  const extra = Object.keys(porMotor).filter((k) => !ENGINE_ORDER.includes(k));
+  const keys = ENGINE_ORDER.filter((k) => porMotor[k]).concat(extra);
+  const groups = keys.map((k) => {
+    const has = Object.prototype.hasOwnProperty.call(desglose || {}, k);
+    return h("div", { class: "reasons-group" },
+      h("div", { class: "rg-head" },
+        h("b", {}, COMPONENT_NAMES[k] || k),
+        h("span", { class: "rg-score" }, has ? `${Math.round(desglose[k])}/100` : "sin puntaje")),
+      h("ul", { class: "reasons" }, porMotor[k].map((m) => h("li", { class: QUIET.test(m) ? "quiet" : null }, m))));
+  });
+  return h("section", { class: "panel" },
+    h("h3", {}, "¿Por qué este resultado?"),
+    h("p", { class: "sub" }, "Señales encontradas por cada fuente de análisis."),
+    groups);
+}
+
+/* Disección del enlace: muestra la URL por partes y pone cada señal debajo de la parte que la provoca. */
+function urlDissection(partes, porMotor) {
+  const notes = { esquema: [], usuario: [], subdominio: [], dominio: [], puerto: [], ruta: [] };
+  for (const engine of ["heuristica", "red"]) {
+    for (const m of porMotor[engine] || []) {
+      const role = partFor(m);
+      if (role && notes[role] && !notes[role].includes(m)) notes[role].push(m);
+    }
+  }
+  const pieces = [
+    ["esquema", partes.esquema ? `${partes.esquema}://` : ""],
+    ["usuario", partes.usuario ? `${partes.usuario}@` : ""],
+    ["subdominio", partes.subdominio ? `${partes.subdominio}.` : ""],
+    ["dominio", partes.dominio || ""],
+    ["puerto", partes.puerto ? `:${partes.puerto}` : ""],
+    ["ruta", partes.ruta || ""],
+  ].filter(([, text]) => text);
+
+  const row = h("div", { class: "url-parts" }, pieces.map(([role, text]) => {
+    const flagged = notes[role].length > 0;
+    return h("div", { class: "part", "data-role": role, "data-flag": String(flagged) },
+      h("span", { class: "part-text" }, text),
+      h("span", { class: "part-label" }, PART_LABELS[role] || role),
+      flagged ? h("ul", { class: "part-notes" }, notes[role].map((n) => h("li", {}, n))) : null);
+  }));
+
+  return h("section", { class: "panel dissect" },
+    h("h3", {}, "Así se lee este enlace"),
+    h("p", { class: "sub" }, "Cada señal aparece debajo de la parte de la dirección que la provoca."),
+    h("div", { class: "url-parts-scroll" }, row),
+    h("p", { class: "note real-domain" },
+      "El sitio al que realmente lleva es ", h("code", {}, partes.dominio || "—"),
+      ". Todo lo que está a su izquierda lo elige quien registró ese dominio, aunque mencione el nombre de un banco o una marca."));
+}
+
+/* Texto plano del resultado, para el botón "Copiar resumen". */
+function summaryText(res) {
+  const d = res.data, info = verdictInfo(d.veredicto);
+  const target = res.tipo === "url" ? d.url : res.tipo === "correo" ? `Correo: ${d.asunto || "(sin asunto)"}` : "Mensaje analizado";
+  const lines = [`PhishShield — ${info.titulo} (${Math.round(d.score)}/100)`, target, "", `Qué hacer: ${info.recomendacion}`];
+  const { reasons } = splitReasons(d.motivos || []);
+  if (reasons.length) lines.push("", "Señales:", ...reasons.slice(0, 6).map((r) => `• ${r}`));
+  return lines.join("\n");
+}
+
+/* Acciones sobre el resultado: volver a analizar y copiar el resumen al portapapeles. */
+function resultActions(res) {
+  const focusInput = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    const id = res.tipo === "url" ? "#url-input" : res.tipo === "mensaje" ? "#sms-text" : "#email-subject";
+    const el = $(id);
+    if (el) el.focus();
+  };
+  const label = h("span", {}, "Copiar resumen");
+  const copyBtn = h("button", { type: "button", class: "btn ghost" }, icon("download"), label);
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(summaryText(res));
+      label.textContent = "¡Copiado!";
+    } catch {
+      label.textContent = "No se pudo copiar";
+    }
+    setTimeout(() => { label.textContent = "Copiar resumen"; }, 1800);
+  });
+  return h("div", { class: "result-actions" },
+    h("button", { type: "button", class: "btn ghost", onclick: focusInput }, icon("scan"), "Analizar otro"),
+    copyBtn);
+}
+
 export function renderResult(root, res, api) {
   const d = res.data, v = verdictKey(d.veredicto), info = VERDICTS[v];
   const { reasons, services } = splitReasons(d.motivos || []);
+  const porMotor = d.motivos_por_motor || {};
+  const grouped = res.tipo === "url" && Object.keys(porMotor).length > 0;
+
+  const meta = [`Puntaje de riesgo ${Math.round(d.score)}/100`];
+  if (d.confianza != null) meta.push(`Confianza del análisis ${pct(d.confianza)}`);
+  if (d.tiempo_ms) meta.push(`analizado en ${(d.tiempo_ms / 1000).toFixed(2).replace(".", ",")} s`);
 
   const hero = h("div", { class: "hero" },
     charts.gauge(d.score),
     h("div", {},
       h("div", { class: "verdict-title" }, icon(v === "seguro" ? "shield" : "alert"), info.titulo),
       h("p", { class: "verdict-sum" }, info.resumen),
-      h("p", { class: "meta-line" }, `Puntaje de riesgo ${Math.round(d.score)}/100` + (d.confianza != null ? ` · Confianza del análisis ${pct(d.confianza)}` : "")),
+      h("p", { class: "meta-line" }, meta.join(" · ")),
+      charts.riskScale(d.score),
       h("div", { class: "todo" }, h("b", {}, "Qué hacer"), info.recomendacion)));
 
-  const why = h("section", { class: "panel" },
-    h("h3", {}, "¿Por qué este resultado?"),
-    h("ul", { class: "reasons" }, reasons.map((r) => h("li", {}, r))),
-    services.length ? h("p", { class: "note" }, `Servicios opcionales sin configurar: ${services.join(", ")}.`) : null);
+  const why = grouped
+    ? reasonsByEngine(porMotor, d.desglose)
+    : h("section", { class: "panel" },
+        h("h3", {}, "¿Por qué este resultado?"),
+        h("ul", { class: "reasons" }, reasons.map((r) => h("li", {}, r))),
+        services.length ? h("p", { class: "note" }, `Servicios opcionales sin configurar: ${services.join(", ")}.`) : null);
 
   const bars = desgloseItems(d.desglose);
   const composition = h("section", { class: "panel" },
@@ -95,7 +194,8 @@ export function renderResult(root, res, api) {
     h("p", { class: "sub" }, "Puntaje de riesgo (0–100) de cada fuente de evidencia."),
     bars.length ? charts.scoreBars(bars) : h("p", { class: "note" }, "Sin desglose disponible."));
 
-  const parts = [hero];
+  const parts = [hero, resultActions(res)];
+  if (res.tipo === "url" && d.partes) parts.push(urlDissection(d.partes, porMotor));
   if (res.tipo === "correo") {
     const r = d.remitente || {};
     parts.push(h("section", { class: "panel" },

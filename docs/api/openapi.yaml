@@ -264,6 +264,21 @@ components:
           additionalProperties:
             type: number
             format: double
+        motivos_por_motor:
+          type: object
+          description: Motivos agrupados por la fuente que los encontró (heuristica, ml, red, conectores).
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        partes:
+          type: object
+          description: Partes de la URL (esquema, usuario, subdominio, dominio, puerto, ruta) para mostrarla segmentada.
+          additionalProperties:
+            type: string
+        tiempo_ms:
+          type: integer
+          description: Tiempo total del análisis en milisegundos.
     Analysis:
       type: object
       required: [id, url, veredicto, score, confianza, motivos, desglose, source, created_at]

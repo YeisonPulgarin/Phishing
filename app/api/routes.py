@@ -28,6 +28,7 @@ from app.core.email_analysis import (
 )
 from app.core.pipeline import AnalysisPipeline
 from app.core.config import Settings
+from app.engines.base import AnalysisContext
 from app.engines.explain import ModelExplainer
 from app.engines.ml import FEATURE_LABELS
 from app.core.security import require_api_key
@@ -123,6 +124,28 @@ def analyze(
         "confianza": report.confianza,
         "motivos": report.motivos,
         "desglose": report.desglose,
+        "motivos_por_motor": report.motivos_por_motor,
+        "partes": url_parts(report.url),
+        "tiempo_ms": report.tiempo_ms,
+    }
+
+
+def url_parts(url: str) -> dict:
+    """Partes de la URL para mostrarla segmentada en la interfaz.
+
+    El dominio registrado es el que realmente decide a qué sitio lleva el enlace;
+    todo lo que va a su izquierda (subdominio, usuario) lo elige quien registró el dominio.
+    """
+    ctx = AnalysisContext.from_url(url)
+    rest = url.split("://", 1)[-1]
+    rest = rest[rest.find("/"):] if "/" in rest else ""
+    return {
+        "esquema": ctx.scheme,
+        "usuario": ctx.username,
+        "subdominio": ctx.subdomain,
+        "dominio": ctx.registered_domain or ctx.host,
+        "puerto": ctx.port,
+        "ruta": rest,
     }
 
 
