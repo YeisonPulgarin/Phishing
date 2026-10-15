@@ -12,6 +12,7 @@ from sqlmodel import Session
 
 from app.core.config import Settings
 from app.core.email_analysis import EmailAnalyzer
+from app.core.mailbox import Mailbox
 from app.core.pipeline import AnalysisPipeline
 from app.db.session import DB
 from app.engines.explain import ModelExplainer
@@ -19,6 +20,15 @@ from app.engines.explain import ModelExplainer
 _settings = Settings.from_env()
 _db_container = DB(_settings)
 _pipeline = AnalysisPipeline(_settings)
+_mailbox = Mailbox(
+    host=_settings.imap_host,
+    port=_settings.imap_port,
+    user=_settings.imap_user,
+    password=_settings.imap_password,
+    use_ssl=_settings.imap_ssl,
+    mailbox=_settings.imap_mailbox,
+    starttls=_settings.imap_starttls,
+)
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -49,3 +59,7 @@ def get_explainer(pipeline: AnalysisPipeline = Depends(get_pipeline)) -> ModelEx
 
 def get_settings() -> Settings:
     return _settings
+
+
+def get_mailbox() -> Mailbox:
+    return _mailbox

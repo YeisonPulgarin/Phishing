@@ -50,6 +50,23 @@ class Settings:
     gsb_api_key: str | None = None
     vt_api_key: str | None = None
 
+    # Dominios propios de la organización (el del servidor de correo interno). Un correo que
+    # viene de aquí no se juzga como si fuera un sitio externo desconocido: si no, todo el
+    # correo interno arrastra una penalización solo por no existir en el DNS público.
+    trusted_domains: set = field(default_factory=set)
+
+    # Buzón IMAP propio (servidor de correo del laboratorio). Vacío = bandeja desactivada.
+    imap_host: str = ""
+    imap_port: int = 143
+    imap_user: str = ""
+    imap_password: str = ""
+    imap_ssl: bool = False
+    # Sube la conexión del puerto 143 a TLS antes de enviar la contraseña (lo que pide Dovecot).
+    imap_starttls: bool = True
+    imap_mailbox: str = "INBOX"
+    # Carpeta a la que se mueven los correos marcados como phishing.
+    imap_quarantine: str = "Phishing"
+
     # Rutas de datos versionados.
     model_path: str = "data/model.joblib"
     dataset_path: str = "data/dataset"
@@ -75,6 +92,24 @@ class Settings:
             s.known_domains_path = v
         if v := os.getenv("PD_ANALYSIS_TIMEOUT"):
             s.analysis_timeout = float(v)
+        if v := os.getenv("PD_TRUSTED_DOMAINS"):
+            s.trusted_domains = {d.strip().lower() for d in v.split(",") if d.strip()}
+        if v := os.getenv("PD_IMAP_HOST"):
+            s.imap_host = v
+        if v := os.getenv("PD_IMAP_PORT"):
+            s.imap_port = int(v)
+        if v := os.getenv("PD_IMAP_USER"):
+            s.imap_user = v
+        if v := os.getenv("PD_IMAP_PASSWORD"):
+            s.imap_password = v
+        if v := os.getenv("PD_IMAP_SSL"):
+            s.imap_ssl = v.strip().lower() in {"1", "true", "yes", "si", "sí"}
+        if v := os.getenv("PD_IMAP_STARTTLS"):
+            s.imap_starttls = v.strip().lower() in {"1", "true", "yes", "si", "sí"}
+        if v := os.getenv("PD_IMAP_MAILBOX"):
+            s.imap_mailbox = v
+        if v := os.getenv("PD_IMAP_QUARANTINE"):
+            s.imap_quarantine = v
         if v := os.getenv("PD_HEURISTIC_WEIGHT"):
             s.heuristic_weight = float(v)
         if v := os.getenv("PD_ML_WEIGHT"):

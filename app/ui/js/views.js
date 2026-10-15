@@ -15,8 +15,8 @@ const explainCache = new Map();
 
 function explainPanel(api, targets) {
   const panel = h("section", { class: "panel" },
-    h("h3", {}, "¿Qué pesó en la decisión del modelo de IA?"),
-    h("p", { class: "sub" }, "Explicación con SHAP: cuánto aportó cada característica del dominio a la probabilidad de phishing."));
+    h("h3", {}, "Qué miró el modelo de IA"),
+    h("p", { class: "sub" }, "Cuánto empujó cada rasgo del dominio hacia phishing."));
   if (!targets.length) {
     panel.append(h("p", { class: "note" }, "Este mensaje no tiene un dominio que explicar."));
     return panel;
@@ -88,8 +88,7 @@ function reasonsByEngine(porMotor, desglose) {
       h("ul", { class: "reasons" }, porMotor[k].map((m) => h("li", { class: QUIET.test(m) ? "quiet" : null }, m))));
   });
   return h("section", { class: "panel" },
-    h("h3", {}, "¿Por qué este resultado?"),
-    h("p", { class: "sub" }, "Señales encontradas por cada fuente de análisis."),
+    h("h3", {}, "Por qué"),
     groups);
 }
 
@@ -162,56 +161,202 @@ function resultActions(res) {
     copyBtn);
 }
 
+function senderPanel(d) {
+  const r = d.remitente || {};
+  return h("section", { class: "panel" },
+    h("h3", {}, "Datos del correo"),
+    h("div", { class: "sender" },
+      h("div", {}, h("span", { class: "muted" }, "Remitente: "), h("span", { class: "mono" }, r.direccion ? `${r.nombre || ""} <${r.direccion}>`.trim() : "no identificado")),
+      h("div", {}, h("span", { class: "muted" }, "Asunto: "), d.asunto || "(sin asunto)")));
+}
+
+function flatReasons(reasons, services) {
+  return h("section", { class: "panel" },
+    h("h3", {}, "Por qué"),
+    h("ul", { class: "reasons" }, reasons.map((r) => h("li", {}, r))),
+    services.length ? h("p", { class: "note" }, `Servicios opcionales sin configurar: ${services.join(", ")}.`) : null);
+}
+
 export function renderResult(root, res, api) {
   const d = res.data, v = verdictKey(d.veredicto), info = VERDICTS[v];
   const { reasons, services } = splitReasons(d.motivos || []);
   const porMotor = d.motivos_por_motor || {};
   const grouped = res.tipo === "url" && Object.keys(porMotor).length > 0;
 
-  const meta = [`Puntaje de riesgo ${Math.round(d.score)}/100`];
-  if (d.confianza != null) meta.push(`Confianza del análisis ${pct(d.confianza)}`);
-  if (d.tiempo_ms) meta.push(`analizado en ${(d.tiempo_ms / 1000).toFixed(2).replace(".", ",")} s`);
+  // En lenguaje simple y sin avisos técnicos: lo que el usuario necesita ver de un vistazo.
+  const topSignals = reasons.filter((r) => !QUIET.test(r)).slice(0, 3);
+  const metaBits = [];
+  if (d.confianza != null) metaBits.push(`Confianza ${pct(d.confianza)}`);
+  if (d.tiempo_ms) metaBits.push(`${(d.tiempo_ms / 1000).toFixed(2).replace(".", ",")} s`);
 
+  // 1) La respuesta: veredicto, qué hacer y las señales principales. Nada que haya que descifrar.
   const hero = h("div", { class: "hero" },
     charts.gauge(d.score),
-    h("div", {},
-      h("div", { class: "verdict-title" }, icon(v === "seguro" ? "shield" : "alert"), info.titulo),
+    h("div", { class: "verdict" },
+      h("h2", { class: "verdict-headline" }, info.titular),
       h("p", { class: "verdict-sum" }, info.resumen),
-      h("p", { class: "meta-line" }, meta.join(" · ")),
-      charts.riskScale(d.score),
-      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), info.recomendacion)));
+      metaBits.length ? h("p", { class: "verdict-meta" }, metaBits.join(" · ")) : null,
+      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), info.recomendacion),
+      topSignals.length
+        ? h("div", { class: "signals" },
+            h("h3", {}, "Señales principales"),
+            h("ul", {}, topSignals.map((r) => h("li", {}, r))))
+        : null));
 
-  const why = grouped
-    ? reasonsByEngine(porMotor, d.desglose)
-    : h("section", { class: "panel" },
-        h("h3", {}, "¿Por qué este resultado?"),
-        h("ul", { class: "reasons" }, reasons.map((r) => h("li", {}, r))),
-        services.length ? h("p", { class: "note" }, `Servicios opcionales sin configurar: ${services.join(", ")}.`) : null);
-
+  // 2) El detalle técnico, plegado: está para quien quiera mirarlo, no estorba a quien no.
+  const body = h("div", { class: "more-body" });
+  if (res.tipo === "url" && d.partes) body.append(urlDissection(d.partes, porMotor));
+  if (res.tipo === "correo") body.append(senderPanel(d));
+  body.append(grouped ? reasonsByEngine(porMotor, d.desglose) : flatReasons(reasons, services));
   const bars = desgloseItems(d.desglose);
-  const composition = h("section", { class: "panel" },
-    h("h3", {}, "Cómo se compone el puntaje"),
-    h("p", { class: "sub" }, "Puntaje de riesgo (0–100) de cada fuente de evidencia."),
-    bars.length ? charts.scoreBars(bars) : h("p", { class: "note" }, "Sin desglose disponible."));
-
-  const parts = [hero, resultActions(res)];
-  if (res.tipo === "url" && d.partes) parts.push(urlDissection(d.partes, porMotor));
-  if (res.tipo === "correo") {
-    const r = d.remitente || {};
-    parts.push(h("section", { class: "panel" },
-      h("h3", {}, "Datos del correo"),
-      h("div", { class: "sender" },
-        h("div", {}, h("span", { class: "muted" }, "Remitente: "), h("span", { class: "mono" }, r.direccion ? `${r.nombre || ""} <${r.direccion}>`.trim() : "no identificado")),
-        h("div", {}, h("span", { class: "muted" }, "Asunto: "), d.asunto || "(sin asunto)"))));
-  }
-  parts.push(h("div", { class: "grid-2" }, why, composition));
+  if (bars.length) body.append(h("section", { class: "panel" }, h("h3", {}, "De dónde sale el puntaje"), charts.scoreBars(bars)));
   if (res.tipo !== "url") {
-    parts.push(h("section", { class: "panel" }, h("h3", {}, "Enlaces encontrados"),
+    body.append(h("section", { class: "panel" }, h("h3", {}, "Enlaces encontrados"),
       d.enlaces?.length ? linksTable(d.enlaces) : h("p", { class: "note" }, "El mensaje no contiene enlaces.")));
   }
-  parts.push(explainPanel(api, explainTargets(res)));
+  body.append(explainPanel(api, explainTargets(res)));
 
-  clear(root).append(h("div", { class: `result v-${v}` }, parts));
+  const detail = h("details", { class: "more" }, h("summary", {}, "Ver el análisis completo"), body);
+
+  clear(root).append(h("div", { class: `result v-${v}` }, hero, resultActions(res), detail));
+}
+
+/* ---------------------------------------------------------------- bandeja del servidor propio */
+
+/* Lista los correos que llegan al buzón IMAP, ya clasificados. `onOpen(uid)` abre el detalle. */
+export function createInbox(root, api, onOpen) {
+  let data = { configurada: true, correos: [], buzon: "INBOX", cuarentena: "Phishing" };
+  let autoQuarantine = false, busy = false;
+  const moved = new Set();                       // evita reintentar el mismo correo en cada refresco
+
+  const setup = () => clear(root).append(h("div", { class: "alert info" }, icon("info"),
+    h("span", {}, "La bandeja no está conectada. Agrega los datos de tu servidor de correo en el archivo ",
+      h("code", {}, ".env"), " (", h("code", {}, "PD_IMAP_HOST"), ", ", h("code", {}, "PD_IMAP_USER"),
+      ", ", h("code", {}, "PD_IMAP_PASSWORD"), ") y reinicia el detector.")));
+
+  const draw = () => {
+    if (!data.configurada) return setup();
+    const rows = data.correos;
+    const counts = { seguro: 0, sospechoso: 0, phishing: 0 };
+    rows.forEach((r) => { counts[verdictKey(r.veredicto)] += 1; });
+
+    const kpi = (label, n, v) => h("div", { class: `kpi${v ? ` v-${v}` : ""}` },
+      h("div", { class: "k" }, label), h("div", { class: "v" }, String(n)));
+
+    const body = rows.map((r) => {
+      const v = verdictKey(r.veredicto);
+      const from = r.remitente?.direccion || "remitente desconocido";
+      const open = () => onOpen(r.uid);
+      const action = v === "phishing"
+        ? h("button", {
+            type: "button", class: "btn ghost tiny",
+            onclick: (e) => { e.stopPropagation(); move(r.uid); },
+          }, "A cuarentena")
+        : null;
+      return h("tr", { class: "click", tabindex: "0", onclick: open,
+        onkeydown: (e) => { if (e.key === "Enter") open(); } },
+        h("td", {}, pill(r.veredicto)),
+        h("td", { class: "wrap" }, h("div", { class: "subj" }, r.asunto),
+          h("div", { class: "muted mono from" }, from)),
+        h("td", { class: "num" }, String(Math.round(r.score))),
+        h("td", {}, r.fecha ? fmtDate(r.fecha) : "—"),
+        h("td", { class: "row-action" }, action));
+    });
+
+    clear(root).append(
+      h("div", { class: "kpis" },
+        kpi("Correos en el buzón", rows.length),
+        kpi("Phishing", counts.phishing, "phishing"),
+        kpi("Sospechosos", counts.sospechoso, "sospechoso"),
+        kpi("Seguros", counts.seguro, "seguro")),
+      h("label", { class: "check" },
+        h("input", { type: "checkbox", checked: autoQuarantine || null,
+          onchange: (e) => { autoQuarantine = e.target.checked; if (autoQuarantine) sweep(); } }),
+        `Mover automáticamente lo que sea phishing a la carpeta "${data.cuarentena}"`),
+      rows.length
+        ? h("div", { class: "table-wrap" }, h("table", { class: "inbox" },
+            h("thead", {}, h("tr", {}, h("th", {}, "Veredicto"), h("th", {}, "Correo"),
+              h("th", { class: "num" }, "Puntaje"), h("th", {}, "Fecha"), h("th", {}))),
+            h("tbody", {}, body)))
+        : h("div", { class: "alert info" }, icon("info"),
+            h("span", {}, "El buzón está vacío. Envía un correo desde otra cuenta y aparecerá aquí.")));
+  };
+
+  const move = async (uid) => {
+    moved.add(uid);
+    try {
+      await api.quarantine(uid);
+      data.correos = data.correos.filter((c) => c.uid !== uid);
+      draw();
+    } catch (err) {
+      clear(root).append(alertBox(err.message));
+    }
+  };
+
+  /* Con el automático encendido, saca de la bandeja todo lo que dio phishing. */
+  const sweep = async () => {
+    for (const c of data.correos.filter((x) => verdictKey(x.veredicto) === "phishing" && !moved.has(x.uid))) {
+      await move(c.uid);
+    }
+  };
+
+  const refresh = async (quiet = false) => {
+    if (busy) return;
+    busy = true;
+    if (!quiet && !root.firstChild) root.append(h("p", { class: "note" }, "Leyendo el buzón…"));
+    try {
+      data = await api.inbox(20);
+      draw();
+      if (autoQuarantine) await sweep();
+    } catch (err) {
+      if (!quiet || !root.firstChild) clear(root).append(alertBox(err.message));
+    } finally {
+      busy = false;
+    }
+  };
+
+  return { refresh };
+}
+
+/* Ruta que siguió el correo (cabeceras Received), del origen al destino. */
+function routePanel(ruta) {
+  if (!ruta || !ruta.saltos || !ruta.saltos.length) return null;
+  const hops = ruta.saltos.map((hop, i) => h("li", {}, h("span", { class: "hop-n" }, String(i + 1)), h("span", { class: "mono" }, hop)));
+  const nota = ruta.paso_por_internet
+    ? "El correo pasó por servidores de internet, como un correo normal."
+    : "El correo no pasó por ningún servidor de internet: se entregó solo dentro de la red local.";
+  return [h("h4", { class: "gap" }, "Ruta del correo"),
+    h("ol", { class: "route" }, hops),
+    h("p", { class: "note" }, nota)];
+}
+
+/* Detalle de un correo de la bandeja, dentro del diálogo. */
+export async function openInboxMessage(api, uid) {
+  const dialog = $("#detail"), body = clear($("#detail-body"));
+  body.append(h("p", { class: "note" }, "Cargando…"));
+  if (!dialog.open) dialog.showModal();
+  try {
+    const d = await api.inboxMessage(uid);
+    const v = verdictKey(d.veredicto), info = VERDICTS[v];
+    const r = d.remitente || {};
+    const { reasons } = splitReasons(d.motivos || []);
+    const bars = desgloseItems(d.desglose);
+    clear(body).append(h("div", { class: `v-${v}` },
+      h("div", { class: "meta" },
+        h("div", {}, pill(d.veredicto), `  ${Math.round(d.score)}/100`),
+        h("div", { class: "mono" }, r.direccion ? `${r.nombre || ""} <${r.direccion}>`.trim() : "remitente no identificado"),
+        h("div", {}, d.asunto || "(sin asunto)")),
+      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), info.recomendacion),
+      h("h4", { class: "gap" }, "Por qué"),
+      h("ul", { class: "reasons" }, reasons.map((x) => h("li", {}, x))),
+      // El desglose deja ver de dónde sale cada punto, incluso cuando ninguna señal
+      // llegó al umbral para aparecer en la lista de arriba.
+      bars.length ? [h("h4", { class: "gap" }, "De dónde sale el puntaje"), charts.scoreBars(bars)] : null,
+      d.enlaces?.length ? [h("h4", { class: "gap" }, "Enlaces encontrados"), linksTable(d.enlaces)] : null,
+      routePanel(d.ruta)));
+  } catch (err) {
+    clear(body).append(alertBox(err.message));
+  }
 }
 
 /* ---------------------------------------------------------------- historial */

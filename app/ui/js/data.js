@@ -4,17 +4,20 @@ export const BANDS = { sospechoso: 35, phishing: 60 };
 export const VERDICTS = {
   seguro: {
     titulo: "Seguro",
+    titular: "Parece seguro",
     resumen: "No encontramos señales claras de phishing.",
     recomendacion: "Puedes continuar, pero nunca compartas contraseñas ni códigos en enlaces que no hayas pedido tú.",
   },
   sospechoso: {
     titulo: "Sospechoso",
+    titular: "Mejor desconfía",
     resumen: "Hay señales de alerta. Conviene verificar antes de actuar.",
     recomendacion: "No ingreses contraseñas ni datos personales. Confirma con la entidad por otro canal, por ejemplo una llamada o escribiendo tú mismo su sitio oficial.",
   },
   phishing: {
     titulo: "Phishing",
-    resumen: "Es muy probable que sea un intento de phishing.",
+    titular: "Esto es phishing",
+    resumen: "Es muy probable que sea un intento de robo de datos.",
     recomendacion: "No abras el enlace ni respondas. Si ya ingresaste datos, cambia tus contraseñas y avisa a tu banco o proveedor.",
   },
 };
@@ -69,27 +72,6 @@ export const METRICS = [
   { key: "recall", name: "Recall" }, { key: "f1", name: "F1" },
 ];
 export const MODEL_NAMES = { regresion_logistica: "Regresión Logística", random_forest: "Random Forest" };
-
-export const EXAMPLES = {
-  url: [
-    { label: "Phishing: banco falso", value: "https://login.secure-bank.evil.tk/verify" },
-    { label: "Sospechoso: enlace acortado", value: "https://bit.ly/3xYz9" },
-    { label: "Legítimo: Wikipedia", value: "https://www.wikipedia.org" },
-    { label: "Legítimo con subdominio: Google", value: "https://accounts.google.com" },
-  ],
-  correo: [
-    { label: "Phishing: falso aviso de PayPal", value: {
-      subject: "URGENTE: verifique su cuenta", sender: "PayPal Seguridad <soporte@paypa1-alertas.tk>",
-      body: "Su cuenta será suspendida. Haga clic aquí para verificarla: http://paypa1-alertas.tk/login" } },
-    { label: "Legítimo: aviso de Google", value: {
-      subject: "Resumen semanal", sender: "Google <no-reply@accounts.google.com>",
-      body: "Hola, te compartimos el resumen semanal." } },
-  ],
-  mensaje: [
-    { label: "Phishing: falso aviso del banco", value: "Bancolombia: tu cuenta fue bloqueada. Verifica tus datos ahora en https://bit.ly/3xYz9" },
-    { label: "Legítimo: ubicación de un amigo", value: "Hola, nos vemos a las 5. Aquí está el mapa: https://www.google.com/maps" },
-  ],
-};
 
 /* Separa los motivos del análisis de los avisos técnicos de servicios opcionales sin configurar. */
 export function splitReasons(motivos) {

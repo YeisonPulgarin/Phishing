@@ -1,11 +1,11 @@
 /* PhishShield: punto de entrada de la interfaz (acceso, navegación y formularios). */
 import { Api, keyStore } from "./js/api.js";
 import { $, $$, h, clear, icon, alertBox } from "./js/dom.js";
-import { EXAMPLES } from "./js/data.js";
-import { createHistory, openDetail, renderEvaluation, renderHow, renderResult } from "./js/views.js";
+import { createHistory, createInbox, openDetail, openInboxMessage, renderEvaluation, renderHow, renderResult } from "./js/views.js";
 
 const api = new Api();
 const history = createHistory($("#history-root"), api, (id) => openDetail(api, id));
+const inbox = createInbox($("#inbox-root"), api, (uid) => openInboxMessage(api, uid));
 
 /* ---------------------------------------------------------------- tema */
 const root = document.documentElement;
@@ -15,7 +15,7 @@ function setTheme(theme) {
   const use = $("#theme-btn use");
   use.setAttribute("href", theme === "dark" ? "#i-sun" : "#i-moon");
 }
-setTheme(localStorage.getItem("pd_theme") === "light" ? "light" : "dark");
+setTheme(localStorage.getItem("pd_theme") === "dark" ? "dark" : "light");
 $("#theme-btn").addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
 
 /* ---------------------------------------------------------------- acceso */
@@ -73,16 +73,25 @@ async function checkHealth() {
 
 /* ---------------------------------------------------------------- navegación */
 let evaluationLoaded = false;
+let inboxTimer = null;
 function showView(name) {
   $$("[data-view].view").forEach((v) => v.classList.toggle("hidden", v.dataset.view !== name));
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   if (name === "historial") history.refresh();
   if (name === "evaluacion" && !evaluationLoaded) { evaluationLoaded = true; renderEvaluation($("#eval-root"), api); }
+  // La bandeja se relee sola mientras está a la vista: en la demo el correo aparece solo.
+  clearInterval(inboxTimer);
+  inboxTimer = null;
+  if (name === "bandeja") {
+    inbox.refresh();
+    inboxTimer = setInterval(() => inbox.refresh(true), 6000);
+  }
   window.scrollTo({ top: 0 });
 }
 $$(".nav-item").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
 renderHow($("#como-root"));
 
+$("#inbox-refresh").addEventListener("click", () => inbox.refresh());
 $("#history-refresh").addEventListener("click", () => history.refresh());
 $("#history-csv").addEventListener("click", () => {
   const blob = new Blob(["\ufeff" + history.csv()], { type: "text/csv;charset=utf-8" });
@@ -113,20 +122,6 @@ $$("#email-mode .seg-item").forEach((b) => b.addEventListener("click", () => swi
 $("#email-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (file) $("#email-raw").value = await file.text();
-});
-
-const fillers = {
-  url: (v) => { $("#url-input").value = v; $("#url-input").focus(); },
-  correo: (v) => {
-    switchEmailMode("campos");
-    $("#email-subject").value = v.subject; $("#email-sender").value = v.sender; $("#email-body").value = v.body;
-  },
-  mensaje: (v) => { $("#sms-text").value = v; $("#sms-text").focus(); },
-};
-$$(".chips[data-examples]").forEach((box) => {
-  const kind = box.dataset.examples;
-  box.append(h("span", { class: "chips-label" }, "Probar con un ejemplo:"),
-    ...EXAMPLES[kind].map((ex) => h("button", { type: "button", class: "chip", onclick: () => fillers[kind](ex.value) }, ex.label)));
 });
 
 const SCAN_STEPS = ["Revisando las reglas de seguridad…", "Verificando el dominio en la red…", "Consultando el modelo de inteligencia artificial…", "Calculando el puntaje de riesgo…"];

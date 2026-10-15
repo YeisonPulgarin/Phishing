@@ -1,18 +1,21 @@
 /* PhishShield — estilos. Sin fuentes ni librerías externas (funciona sin internet). */
+/* Paleta por defecto: blanco y verde (como el servidor de correo). Modo oscuro más abajo. */
 :root {
-  --bg: #0a0f1e; --bg2: #0f1630; --panel: #121a38; --panel2: #18224a; --line: #26325e;
-  --text: #e8edff; --muted: #93a0cf; --accent: #38bdf8; --accent2: #818cf8;
-  --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
-  --radius: 14px; --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  --bg: #f4f8f4; --bg2: #e9f1ea; --panel: #ffffff; --panel2: #eef5ef; --line: #d4e3d8;
+  --text: #122017; --muted: #566b5d; --accent: #15803d; --accent2: #0d9488;
+  --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+  --radius: 14px; --shadow: 0 8px 24px rgba(18, 51, 33, .09);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  color-scheme: dark;
+  --focus: rgba(21, 128, 61, .22);
+  color-scheme: light;
 }
-[data-theme="light"] {
-  --bg: #f3f5fb; --bg2: #e8ecf8; --panel: #ffffff; --panel2: #f0f3fb; --line: #d8deef;
-  --text: #141a33; --muted: #5a6590; --accent: #0369a1; --accent2: #4f46e5;
-  --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
-  --shadow: 0 8px 24px rgba(20, 26, 51, .08); color-scheme: light;
+[data-theme="dark"] {
+  --bg: #0a140d; --bg2: #0e1a12; --panel: #10231a; --panel2: #16301f; --line: #244030;
+  --text: #e6f3ea; --muted: #9bb3a4; --accent: #34d399; --accent2: #2dd4bf;
+  --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .4); --focus: rgba(52, 211, 153, .3);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
@@ -239,6 +242,43 @@ tbody tr.click { cursor: pointer; } tbody tr.click:hover { background: var(--pan
 .dialog::backdrop { background: rgba(3, 7, 18, .65); backdrop-filter: blur(3px); }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
 .dialog .meta { display: grid; gap: 4px; margin-bottom: 12px; font-size: 14px; }
+
+/* ---------- Resultado: la respuesta primero, el detalle plegado ---------- */
+.verdict { display: grid; gap: 12px; align-content: center; }
+.verdict-headline { font-size: clamp(27px, 3.6vw, 40px); font-weight: 800; letter-spacing: -.02em; line-height: 1.04; color: var(--vc); }
+.verdict-sum { font-size: 16px; color: var(--text); max-width: 48ch; }
+.verdict-meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.verdict .todo { margin-top: 0; }
+.signals { margin-top: 2px; }
+.signals h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+.signals ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.signals li { display: flex; gap: 9px; align-items: flex-start; font-size: 14.5px; }
+.signals li::before { content: ""; flex: none; width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: var(--vc); }
+
+.more { border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 55%, transparent); }
+.more > summary { cursor: pointer; list-style: none; padding: 15px 20px; font-weight: 600; color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .25s ease; }
+.more[open] > summary::after { transform: rotate(-135deg); }
+.more > summary:hover { color: var(--accent); }
+.more > summary:hover::after { border-color: var(--accent); }
+.more-body { padding: 4px 20px 20px; }
+.more-body > * + * { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.more-body .panel { border: 0; background: transparent; box-shadow: none; padding: 0; }
+
+/* ---------- Ruta del correo (cabeceras Received) ---------- */
+.route { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.route li { display: flex; align-items: center; gap: 10px; }
+.route .hop-n { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--panel2); border: 1px solid var(--line); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.route .mono { font-size: 12.5px; word-break: break-all; }
+
+/* ---------- Bandeja ---------- */
+.inbox .subj { font-weight: 600; }
+.inbox .from { font-size: 12.5px; margin-top: 2px; }
+.inbox td { vertical-align: top; }
+.inbox .row-action { text-align: right; white-space: nowrap; }
+.btn.tiny { padding: 5px 11px; font-size: 12.5px; }
 
 /* ---------- Escala de riesgo (complementa al velocímetro) ---------- */
 .scale { margin-top: 16px; }

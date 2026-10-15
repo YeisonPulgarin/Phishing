@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="dark">
+<html lang="es" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark light" />
+  <meta name="color-scheme" content="light dark" />
   <title>PhishShield · Detector de phishing</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/static/styles.css" />
@@ -59,6 +59,7 @@
       <div class="brand"><svg class="icon logo"><use href="#i-shield"/></svg><span>PhishShield</span></div>
       <nav id="nav" class="nav" aria-label="Secciones">
         <button type="button" class="nav-item active" data-view="analizar"><svg class="icon"><use href="#i-search"/></svg><span>Analizar</span></button>
+        <button type="button" class="nav-item" data-view="bandeja"><svg class="icon"><use href="#i-mail"/></svg><span>Bandeja</span></button>
         <button type="button" class="nav-item" data-view="historial"><svg class="icon"><use href="#i-history"/></svg><span>Historial</span></button>
         <button type="button" class="nav-item" data-view="evaluacion"><svg class="icon"><use href="#i-chart"/></svg><span>Evaluación</span></button>
         <button type="button" class="nav-item" data-view="como"><svg class="icon"><use href="#i-info"/></svg><span>Cómo funciona</span></button>
@@ -91,7 +92,6 @@
             <input id="url-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://ejemplo.com/login" />
             <button class="btn primary" type="submit">Analizar</button>
           </div>
-          <div class="chips" data-examples="url"></div>
         </form>
 
         <form id="form-correo" class="panel form hidden" data-kind="correo">
@@ -116,7 +116,6 @@
           <div class="form-foot">
             <button class="btn primary" type="submit">Analizar correo</button>
           </div>
-          <div class="chips" data-examples="correo"></div>
         </form>
 
         <form id="form-mensaje" class="panel form hidden" data-kind="mensaje">
@@ -125,10 +124,20 @@
           <div class="form-foot">
             <button class="btn primary" type="submit">Analizar mensaje</button>
           </div>
-          <div class="chips" data-examples="mensaje"></div>
         </form>
 
         <div id="result" class="result-wrap" aria-live="polite"></div>
+      </section>
+
+      <!-- Bandeja (servidor de correo propio) -->
+      <section id="view-bandeja" class="view hidden" data-view="bandeja">
+        <header class="view-head row">
+          <div><h1>Bandeja</h1><p>Los correos que llegan a tu servidor, revisados uno por uno al entrar.</p></div>
+          <div class="head-actions">
+            <button id="inbox-refresh" type="button" class="btn ghost"><svg class="icon"><use href="#i-refresh"/></svg>Actualizar</button>
+          </div>
+        </header>
+        <div id="inbox-root"></div>
       </section>
 
       <!-- Historial -->

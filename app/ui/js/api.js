@@ -43,6 +43,7 @@ export class Api {
     }
     if (resp.status === 401) throw new ApiError("La clave API no es válida.", 401);
     if (resp.status === 422) throw new ApiError(`Entrada no válida: ${await detail(resp)}`, 422);
+    if (resp.status === 502) throw new ApiError(await detail(resp), 502);   // fallo al hablar con el buzón
     if (resp.status === 503) throw new ApiError("El modelo de aprendizaje automático no está disponible en el servidor.", 503);
     if (!resp.ok) throw new ApiError(`El detector respondió con un error (${resp.status}).`, resp.status);
     try {
@@ -58,6 +59,9 @@ export class Api {
   analyzeEmail(payload) { return this.request("POST", "/api/analyze-email", payload); }
   analyzeMessage(text) { return this.request("POST", "/api/analyze-message", { text }); }
   explain(url) { return this.request("POST", "/api/explain", { url }); }
+  inbox(limit = 20) { return this.request("GET", `/api/inbox?limit=${limit}`); }
+  inboxMessage(uid) { return this.request("GET", `/api/inbox/${encodeURIComponent(uid)}`); }
+  quarantine(uid) { return this.request("POST", `/api/inbox/${encodeURIComponent(uid)}/cuarentena`); }
   history() { return this.request("GET", "/api/analyses"); }
   historyItem(id) { return this.request("GET", `/api/analyses/${encodeURIComponent(id)}`); }
   evaluation() { return this.request("GET", "/api/evaluation"); }

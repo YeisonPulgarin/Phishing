@@ -57,6 +57,9 @@ curl -X POST http://localhost:8000/api/analyze \
 | POST | `/api/analyze-email` | `X-API-Key` | Analiza un correo (`raw` = .eml completo, o `subject`/`sender`/`body`) |
 | POST | `/api/analyze-message` | `X-API-Key` | Analiza un mensaje de texto (SMS, chat): `{"text": "..."}` |
 | POST | `/api/auth` | — | Valida la API key (login de la UI) |
+| GET | `/api/inbox` | `X-API-Key` | Correos del buzón IMAP propio, ya clasificados |
+| GET | `/api/inbox/{uid}` | `X-API-Key` | Análisis completo de un correo de la bandeja |
+| POST | `/api/inbox/{uid}/cuarentena` | `X-API-Key` | Mueve ese correo a la carpeta de cuarentena |
 | GET | `/health` | — | Health check |
 
 La especificación completa está en `docs/api/openapi.yaml`, con colección ejecutable en
@@ -75,6 +78,11 @@ dirección que la API, sin segundo proceso). Se ingresa con la clave API del `.e
   Los motivos se agrupan por la fuente que los encontró (reglas, modelo de IA, red, servicios),
   junto con cómo se compone el puntaje y la explicación SHAP del modelo. Cada resultado se puede
   copiar como resumen y relanzar con "Analizar otro".
+- **Bandeja:** se conecta por IMAP al servidor de correo propio (Postfix + Dovecot) y muestra
+  los correos que van llegando, cada uno ya clasificado como seguro, sospechoso o phishing. Se
+  relee sola cada pocos segundos, permite abrir el detalle de cada correo y mover los de phishing
+  a una carpeta de cuarentena, igual que hace el spam de Gmail. Se activa llenando las variables
+  `PD_IMAP_*` del `.env`; si se dejan vacías, la pestaña avisa cómo configurarla.
 - **Historial:** análisis guardados con filtros, detalle de cada uno y descarga en CSV.
 - **Evaluación:** reglas vs modelo de IA vs combinado (tabla, métricas, curvas ROC, matriz de
   confusión), comparación de modelos y limitaciones.

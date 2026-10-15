@@ -10,6 +10,7 @@ procesamiento de lenguaje natural. No se procesan archivos adjuntos.
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -43,6 +44,41 @@ KEYWORDS = [
 _URL_RE = re.compile(r"""https?://[^\s<>"'\)\]]+""", re.IGNORECASE)
 _DOMAIN_IN_TEXT_RE = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", re.IGNORECASE)
 _AUTH_FAIL_RE = re.compile(r"\b(spf|dkim|dmarc)\s*=\s*(fail|softfail|permerror|temperror)", re.IGNORECASE)
+_RECEIVED_FROM_RE = re.compile(r"from\s+([A-Za-z0-9.\-]+)", re.IGNORECASE)
+_IPV4_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
+
+
+def _is_public_ip(ip: str) -> bool:
+    """True si la IP es de internet (no privada, loopback ni de enlace local)."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return not (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved)
+
+
+def parse_received(headers: List[str]) -> tuple[List[str], bool]:
+    """De las cabeceras Received saca la ruta legible y si pasó por alguna IP pública.
+
+    Un correo legítimo de un dominio de internet tuvo que viajar por la red pública, así que
+    alguna IP pública aparece en su ruta. Si todas las IPs son privadas, el correo se inyectó
+    dentro de la red local: útil para detectar remitentes falsificados en el laboratorio.
+    """
+    route: List[str] = []
+    has_public = False
+    for h in headers:
+        text = " ".join(str(h).split())
+        host = _RECEIVED_FROM_RE.search(text)
+        ips = _IPV4_RE.findall(text)
+        public = [ip for ip in ips if _is_public_ip(ip)]
+        if public:
+            has_public = True
+        label = host.group(1) if host else "(desconocido)"
+        if ips:
+            label += f" [{ips[0]}]"
+        route.append(label)
+    route.reverse()                      # del origen al destino
+    return route, has_public
 
 
 def _strip_accents(text: str) -> str:
@@ -71,6 +107,8 @@ class ParsedMessage:
     urls: List[str] = field(default_factory=list)
     link_mismatches: List[tuple[str, str]] = field(default_factory=list)  # (texto visible, destino)
     auth_failures: List[str] = field(default_factory=list)
+    route: List[str] = field(default_factory=list)   # saltos Received, del origen al destino
+    route_has_public: bool = False                   # ¿pasó por alguna IP de internet?
 
 
 def extract_urls(text: str) -> List[str]:
@@ -99,6 +137,8 @@ def parse_email(raw: str) -> ParsedMessage:
 
     auth = " ".join(str(h) for h in msg.get_all("Authentication-Results", []))
     parsed.auth_failures = sorted({m.group(1).upper() for m in _AUTH_FAIL_RE.finditer(auth)})
+
+    parsed.route, parsed.route_has_public = parse_received(msg.get_all("Received", []))
 
     texts: List[str] = []
     urls: List[str] = []
@@ -165,7 +205,10 @@ class EmailAnalyzer:
     def analyze(self, msg: ParsedMessage) -> dict:
         urls = msg.urls[:MAX_URLS]
         targets = {f"url:{u}": u for u in urls}
-        if msg.sender_domain:
+        # El dominio propio no se analiza como un sitio externo: un dominio interno no existe
+        # en el DNS público ni tiene certificado, y eso penalizaría a todo el correo legítimo.
+        interno = msg.sender_domain.lower() in self._settings.trusted_domains
+        if msg.sender_domain and not interno:
             targets["remitente"] = f"https://{msg.sender_domain}"
         reports = self._run_parallel(targets)
 
@@ -211,6 +254,7 @@ class EmailAnalyzer:
             "desglose": {"enlaces": round(max(url_scores, default=0.0), 1),
                          "remitente": round(sender_score, 1),
                          "senales_mensaje": round(min(bonus, MAX_BONUS), 1)},
+            "ruta": {"saltos": msg.route, "paso_por_internet": msg.route_has_public},
         }
 
     # -- helpers -----------------------------------------------------------------------
@@ -272,4 +316,14 @@ class EmailAnalyzer:
             bonus += 20.0
             signals.append("El servidor de correo reportó fallos de autenticación: "
                            + ", ".join(msg.auth_failures))
+
+        # Spoofing en la red local: el correo dice venir de un dominio de internet
+        # (sender_reg no vacío = tiene un sufijo público real) pero su ruta no pasó por
+        # ninguna IP pública, así que nunca tocó los servidores reales de ese dominio.
+        sender_reg = _registered_domain(msg.sender_domain) if msg.sender_domain else ""
+        if sender_reg and msg.route and not msg.route_has_public:
+            bonus += 22.0
+            signals.append(f"El correo dice venir de {msg.sender_domain}, un dominio de internet, "
+                           "pero fue entregado solo por servidores de la red local, sin pasar por "
+                           "los servidores reales de ese dominio. Es una señal clara de suplantación.")
         return signals, bonus

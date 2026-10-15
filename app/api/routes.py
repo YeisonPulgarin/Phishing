@@ -15,6 +15,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 import json
+from email import message_from_string
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -22,7 +24,10 @@ from sqlmodel import Session
 
 import app.core.security as security
 
-from app.api.deps import get_db, get_email_analyzer, get_explainer, get_pipeline, get_settings
+from app.api.deps import (
+    get_db, get_email_analyzer, get_explainer, get_mailbox, get_pipeline, get_settings,
+)
+from app.core.mailbox import Mailbox, MailboxError
 from app.core.email_analysis import (
     EmailAnalyzer, parse_email, parse_fields, parse_text_message,
 )
@@ -198,6 +203,84 @@ def analyze_message(
     result = analyzer.analyze(parse_text_message(body.text))
     result["id"] = _persist_message(session, result)
     return result
+
+
+# ---------------------------------------------------------------- bandeja del servidor propio
+# El análisis de un correo es costoso (consulta la red por cada enlace), y la bandeja se
+# refresca sola cada pocos segundos: se cachea por UID para no repetir trabajo.
+_inbox_cache: dict[str, dict] = {}
+
+
+def _message_date(raw: str) -> Optional[str]:
+    """Fecha del encabezado Date en ISO, o None si el correo no la trae o viene mal formada."""
+    try:
+        parsed = parsedate_to_datetime(message_from_string(raw).get("Date", ""))
+        return parsed.isoformat() if parsed else None
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/inbox", status_code=200, dependencies=[Depends(require_api_key)])
+def inbox(
+    limit: int = 20,
+    mailbox: Mailbox = Depends(get_mailbox),
+    analyzer: EmailAnalyzer = Depends(get_email_analyzer),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Correos del buzón IMAP propio, cada uno ya clasificado como phishing o normal."""
+    info = {"configurada": mailbox.enabled, "buzon": settings.imap_mailbox,
+            "cuarentena": settings.imap_quarantine, "correos": []}
+    if not mailbox.enabled:
+        return info
+    try:
+        messages = mailbox.fetch_recent(max(1, min(limit, 50)))
+    except MailboxError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    if len(_inbox_cache) > 500:
+        _inbox_cache.clear()
+    for message in messages:
+        result = _inbox_cache.get(message.uid)
+        if result is None:
+            result = analyzer.analyze(parse_email(message.raw))
+            result["fecha"] = _message_date(message.raw)
+            _inbox_cache[message.uid] = result
+        info["correos"].append({
+            "uid": message.uid,
+            "fecha": result.get("fecha"),
+            "asunto": result.get("asunto") or "(sin asunto)",
+            "remitente": result.get("remitente") or {},
+            "veredicto": result["veredicto"],
+            "score": result["score"],
+            "confianza": result.get("confianza"),
+            "motivos": (result.get("motivos") or [])[:3],
+            "enlaces": len(result.get("enlaces") or []),
+        })
+    return info
+
+
+@router.get("/inbox/{uid}", status_code=200, dependencies=[Depends(require_api_key)])
+def inbox_message(uid: str) -> dict:
+    """Análisis completo de un correo de la bandeja (el mismo que devuelve /analyze-email)."""
+    result = _inbox_cache.get(uid)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ese correo ya no está en la bandeja. Actualízala.")
+    return result
+
+
+@router.post("/inbox/{uid}/cuarentena", status_code=200, dependencies=[Depends(require_api_key)])
+def quarantine(
+    uid: str,
+    mailbox: Mailbox = Depends(get_mailbox),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Mueve el correo a la carpeta de cuarentena del buzón (como hace el spam de Gmail)."""
+    try:
+        mailbox.move(uid, settings.imap_quarantine)
+    except MailboxError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    _inbox_cache.pop(uid, None)
+    return {"movido": True, "carpeta": settings.imap_quarantine}
 
 
 @router.get("/analyses", status_code=200, dependencies=[Depends(require_api_key)])
