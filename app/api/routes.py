@@ -25,7 +25,8 @@ from sqlmodel import Session
 import app.core.security as security
 
 from app.api.deps import (
-    get_db, get_email_analyzer, get_explainer, get_mailbox, get_pipeline, get_settings,
+    default_account_id, get_db, get_email_analyzer, get_explainer, get_mailbox,
+    get_pipeline, get_settings, list_accounts,
 )
 from app.core.mailbox import Mailbox, MailboxError
 from app.core.email_analysis import (
@@ -223,13 +224,16 @@ def _message_date(raw: str) -> Optional[str]:
 @router.get("/inbox", status_code=200, dependencies=[Depends(require_api_key)])
 def inbox(
     limit: int = 20,
+    cuenta: Optional[str] = None,
     mailbox: Mailbox = Depends(get_mailbox),
     analyzer: EmailAnalyzer = Depends(get_email_analyzer),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Correos del buzón IMAP propio, cada uno ya clasificado como phishing o normal."""
+    acc = cuenta or default_account_id()
     info = {"configurada": mailbox.enabled, "buzon": settings.imap_mailbox,
-            "cuarentena": settings.imap_quarantine, "correos": []}
+            "cuarentena": settings.imap_quarantine, "cuentas": list_accounts(),
+            "cuenta": acc, "correos": []}
     if not mailbox.enabled:
         return info
     try:
@@ -240,11 +244,12 @@ def inbox(
     if len(_inbox_cache) > 500:
         _inbox_cache.clear()
     for message in messages:
-        result = _inbox_cache.get(message.uid)
+        key = f"{acc}:{message.uid}"
+        result = _inbox_cache.get(key)
         if result is None:
             result = analyzer.analyze(parse_email(message.raw))
             result["fecha"] = _message_date(message.raw)
-            _inbox_cache[message.uid] = result
+            _inbox_cache[key] = result
         info["correos"].append({
             "uid": message.uid,
             "fecha": result.get("fecha"),
@@ -260,9 +265,10 @@ def inbox(
 
 
 @router.get("/inbox/{uid}", status_code=200, dependencies=[Depends(require_api_key)])
-def inbox_message(uid: str) -> dict:
+def inbox_message(uid: str, cuenta: Optional[str] = None) -> dict:
     """Análisis completo de un correo de la bandeja (el mismo que devuelve /analyze-email)."""
-    result = _inbox_cache.get(uid)
+    acc = cuenta or default_account_id()
+    result = _inbox_cache.get(f"{acc}:{uid}")
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ese correo ya no está en la bandeja. Actualízala.")
     return result
@@ -271,15 +277,17 @@ def inbox_message(uid: str) -> dict:
 @router.post("/inbox/{uid}/cuarentena", status_code=200, dependencies=[Depends(require_api_key)])
 def quarantine(
     uid: str,
+    cuenta: Optional[str] = None,
     mailbox: Mailbox = Depends(get_mailbox),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Mueve el correo a la carpeta de cuarentena del buzón (como hace el spam de Gmail)."""
+    acc = cuenta or default_account_id()
     try:
         mailbox.move(uid, settings.imap_quarantine)
     except MailboxError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
-    _inbox_cache.pop(uid, None)
+    _inbox_cache.pop(f"{acc}:{uid}", None)
     return {"movido": True, "carpeta": settings.imap_quarantine}
 
 

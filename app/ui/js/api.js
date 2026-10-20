@@ -25,12 +25,12 @@ async function detail(resp) {
 }
 
 export class Api {
-  async request(method, path, body, { auth = true } = {}) {
+  async request(method, path, body, { auth = true, timeout = 25000 } = {}) {
     const headers = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth) headers["X-API-Key"] = keyStore.get();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);
+    const timer = setTimeout(() => controller.abort(), timeout);
     let resp;
     try {
       resp = await fetch(path, { method, headers, signal: controller.signal, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -59,9 +59,9 @@ export class Api {
   analyzeEmail(payload) { return this.request("POST", "/api/analyze-email", payload); }
   analyzeMessage(text) { return this.request("POST", "/api/analyze-message", { text }); }
   explain(url) { return this.request("POST", "/api/explain", { url }); }
-  inbox(limit = 20) { return this.request("GET", `/api/inbox?limit=${limit}`); }
-  inboxMessage(uid) { return this.request("GET", `/api/inbox/${encodeURIComponent(uid)}`); }
-  quarantine(uid) { return this.request("POST", `/api/inbox/${encodeURIComponent(uid)}/cuarentena`); }
+  inbox(limit = 20, cuenta) { const q = cuenta ? `&cuenta=${encodeURIComponent(cuenta)}` : ""; return this.request("GET", `/api/inbox?limit=${limit}${q}`, undefined, { timeout: 60000 }); }
+  inboxMessage(uid, cuenta) { const q = cuenta ? `?cuenta=${encodeURIComponent(cuenta)}` : ""; return this.request("GET", `/api/inbox/${encodeURIComponent(uid)}${q}`); }
+  quarantine(uid, cuenta) { const q = cuenta ? `?cuenta=${encodeURIComponent(cuenta)}` : ""; return this.request("POST", `/api/inbox/${encodeURIComponent(uid)}/cuarentena${q}`); }
   history() { return this.request("GET", "/api/analyses"); }
   historyItem(id) { return this.request("GET", `/api/analyses/${encodeURIComponent(id)}`); }
   evaluation() { return this.request("GET", "/api/evaluation"); }

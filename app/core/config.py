@@ -6,10 +6,46 @@ umbrales de bandas, rutas). Se instancia desde variables de entorno con prefijo 
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 from dotenv import load_dotenv
+
+
+def _slug(text: str) -> str:
+    """Identificador corto y seguro para la URL a partir del usuario (parte antes de @)."""
+    base = re.sub(r"[^a-z0-9]+", "-", (text.split("@")[0] or "").lower()).strip("-")
+    return base or "cuenta"
+
+
+def _parse_imap_accounts(raw: str, fallback_user: str, fallback_password: str) -> List[dict]:
+    """Lee PD_IMAP_ACCOUNTS: entradas separadas por coma o salto de línea, cada una con la
+    forma 'usuario|clave' o 'usuario|clave|Nombre a mostrar' (el nombre es opcional y solo
+    cambia la etiqueta del menú; el inicio de sesión usa 'usuario'). Si no hay ninguna, usa la
+    cuenta única (PD_IMAP_USER/PD_IMAP_PASSWORD) para no romper nada."""
+    accounts: List[dict] = []
+    seen: set = set()
+    for entry in re.split(r"[,\n]", raw or ""):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = [p.strip() for p in entry.split("|")]
+        user = parts[0]
+        password = parts[1] if len(parts) > 1 else ""
+        nombre = parts[2] if len(parts) > 2 and parts[2] else user
+        if not user:
+            continue
+        aid, base, n = _slug(user), _slug(user), 2
+        while aid in seen:
+            aid = f"{base}-{n}"
+            n += 1
+        seen.add(aid)
+        accounts.append({"id": aid, "nombre": nombre, "user": user, "password": password})
+    if not accounts and fallback_user:
+        accounts.append({"id": _slug(fallback_user), "nombre": fallback_user,
+                         "user": fallback_user, "password": fallback_password})
+    return accounts
 
 # Carga las variables de un archivo `.env` del directorio de trabajo (si existe) al
 # importar el módulo. `override=False` respeta las variables de entorno ya definidas:
@@ -64,6 +100,7 @@ class Settings:
     # Sube la conexión del puerto 143 a TLS antes de enviar la contraseña (lo que pide Dovecot).
     imap_starttls: bool = True
     imap_mailbox: str = "INBOX"
+    imap_accounts: list = field(default_factory=list)
     # Carpeta a la que se mueven los correos marcados como phishing.
     imap_quarantine: str = "Phishing"
 
@@ -110,6 +147,7 @@ class Settings:
             s.imap_mailbox = v
         if v := os.getenv("PD_IMAP_QUARANTINE"):
             s.imap_quarantine = v
+        s.imap_accounts = _parse_imap_accounts(os.getenv("PD_IMAP_ACCOUNTS", ""), s.imap_user, s.imap_password)
         if v := os.getenv("PD_HEURISTIC_WEIGHT"):
             s.heuristic_weight = float(v)
         if v := os.getenv("PD_ML_WEIGHT"):

@@ -106,6 +106,57 @@ export function groupedBars(metrics, values) {
     h("div", { class: "vlabels" }, metrics.map((m) => h("span", {}, m.name))));
 }
 
+/* Dona (anillo) para la distribución de veredictos. `segments` = [{ value, color }] en orden.
+   El color se pasa como propiedad de estilo (var(--ok), etc.), nunca como atributo, para cumplir la CSP. */
+export function donut(segments) {
+  const total = segments.reduce((a, g) => a + g.value, 0);
+  const R = 52, CIRC = 2 * Math.PI * R, cx = 70, cy = 70, sw = 22;
+  let offset = 0;
+  const rings = segments.filter((g) => g.value > 0).map((g) => {
+    const len = (g.value / total) * CIRC;
+    const ring = s("circle", {
+      class: "donut-seg", cx, cy, r: R, "stroke-width": sw, "stroke-linecap": "butt",
+      "stroke-dasharray": "0 " + CIRC.toFixed(2), "stroke-dashoffset": (-offset).toFixed(2),
+      transform: `rotate(-90 ${cx} ${cy})`, vars: { stroke: g.color },
+    });
+    animateVar(ring, "stroke-dasharray", `${len.toFixed(2)} ${(CIRC - len).toFixed(2)}`);
+    offset += len;
+    return ring;
+  });
+  const center = h("b", {}, "0");
+  countUp(center, total);
+  return h("div", { class: "donut-wrap" },
+    s("svg", { class: "donut", viewBox: "0 0 140 140", role: "img", "aria-label": `${total} análisis en total` },
+      s("circle", { class: "donut-track", cx, cy, r: R, "stroke-width": sw }), ...rings),
+    h("div", { class: "donut-center" }, center, h("small", {}, "análisis")));
+}
+
+/* Columnas verticales (una por categoría; p. ej. actividad por día). `items` = [{ label, value }]. */
+export function columns(items, format = (v) => String(v)) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return h("div", { class: "cols" }, items.map((it) => {
+    const bar = h("div", { class: "col", vars: { "--h": "0%" }, title: `${it.label}: ${it.value}` });
+    animateVar(bar, "--h", `${it.value ? Math.max(4, (it.value / max) * 100) : 0}%`);
+    return h("div", { class: "col-slot" },
+      h("span", { class: "col-val" }, it.value ? format(it.value) : ""),
+      h("div", { class: "col-rail" }, bar),
+      h("span", { class: "col-lbl" }, it.label));
+  }));
+}
+
+/* Barras horizontales de conteo (una por categoría). `items` = [{ label, value, color }]. */
+export function countBars(items) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return h("div", { class: "cbars" }, items.map((it) => {
+    const fill = h("div", { class: "cfill", vars: { "--w": "0%", background: it.color || "var(--accent)" } });
+    animateVar(fill, "--w", `${it.value ? Math.max(3, (it.value / max) * 100) : 0}%`);
+    return h("div", { class: "cbar" },
+      h("span", { class: "clbl" }, it.label),
+      h("div", { class: "ctrack" }, fill),
+      h("span", { class: "cval" }, String(it.value)));
+  }));
+}
+
 /* Curvas ROC con leyenda que permite ocultar sistemas. Devuelve { element, legend }. */
 export function rocChart(curves) {
   const L = 58, T = 12, W = 350, H = 320;

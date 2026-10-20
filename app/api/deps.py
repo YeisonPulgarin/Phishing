@@ -20,15 +20,34 @@ from app.engines.explain import ModelExplainer
 _settings = Settings.from_env()
 _db_container = DB(_settings)
 _pipeline = AnalysisPipeline(_settings)
-_mailbox = Mailbox(
-    host=_settings.imap_host,
-    port=_settings.imap_port,
-    user=_settings.imap_user,
-    password=_settings.imap_password,
-    use_ssl=_settings.imap_ssl,
-    mailbox=_settings.imap_mailbox,
-    starttls=_settings.imap_starttls,
-)
+def _build_mailbox(user: str, password: str) -> Mailbox:
+    """Un buzón para una cuenta concreta. Todas comparten servidor (host/puerto/TLS);
+    solo cambian usuario y contraseña."""
+    return Mailbox(
+        host=_settings.imap_host,
+        port=_settings.imap_port,
+        user=user,
+        password=password,
+        use_ssl=_settings.imap_ssl,
+        mailbox=_settings.imap_mailbox,
+        starttls=_settings.imap_starttls,
+    )
+
+
+# Un buzón listo por cada cuenta configurada (la conexión real se abre solo al usarlo).
+_mailboxes: dict = {acc["id"]: _build_mailbox(acc["user"], acc["password"]) for acc in _settings.imap_accounts}
+# Buzón vacío de reserva: su propiedad .enabled es False, así la bandeja se muestra "no configurada".
+_mailbox = next(iter(_mailboxes.values()), _build_mailbox("", ""))
+
+
+def default_account_id() -> str:
+    """Id de la primera cuenta configurada (la que se usa si no se pide ninguna)."""
+    return _settings.imap_accounts[0]["id"] if _settings.imap_accounts else ""
+
+
+def list_accounts() -> list:
+    """Cuentas disponibles para el selector de la bandeja (sin exponer contraseñas)."""
+    return [{"id": a["id"], "nombre": a["nombre"]} for a in _settings.imap_accounts]
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -61,5 +80,8 @@ def get_settings() -> Settings:
     return _settings
 
 
-def get_mailbox() -> Mailbox:
+def get_mailbox(cuenta: str | None = None) -> Mailbox:
+    """Buzón de la cuenta pedida (?cuenta=<id>); si no se indica o no existe, la primera."""
+    if cuenta and cuenta in _mailboxes:
+        return _mailboxes[cuenta]
     return _mailbox

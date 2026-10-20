@@ -225,8 +225,8 @@ export function renderResult(root, res, api) {
 
 /* Lista los correos que llegan al buzón IMAP, ya clasificados. `onOpen(uid)` abre el detalle. */
 export function createInbox(root, api, onOpen) {
-  let data = { configurada: true, correos: [], buzon: "INBOX", cuarentena: "Phishing" };
-  let autoQuarantine = false, busy = false;
+  let data = { configurada: true, correos: [], buzon: "INBOX", cuarentena: "Phishing", cuentas: [], cuenta: "" };
+  let autoQuarantine = false, busy = false, account = "";
   const moved = new Set();                       // evita reintentar el mismo correo en cada refresco
 
   const setup = () => clear(root).append(h("div", { class: "alert info" }, icon("info"),
@@ -245,8 +245,11 @@ export function createInbox(root, api, onOpen) {
 
     const body = rows.map((r) => {
       const v = verdictKey(r.veredicto);
-      const from = r.remitente?.direccion || "remitente desconocido";
-      const open = () => onOpen(r.uid);
+      const rem = r.remitente || {};
+      const from = rem.nombre
+        ? `${rem.nombre} <${rem.direccion || ""}>`.replace(" <>", "")
+        : (rem.direccion || "remitente desconocido");
+      const open = () => onOpen(r.uid, account);
       const action = v === "phishing"
         ? h("button", {
             type: "button", class: "btn ghost tiny",
@@ -263,7 +266,18 @@ export function createInbox(root, api, onOpen) {
         h("td", { class: "row-action" }, action));
     });
 
+    const cuentas = data.cuentas || [];
+    let picker = null;
+    if (cuentas.length) {
+      const select = h("select", { "aria-label": "Buzón a leer" },
+        cuentas.map((c) => h("option", { value: c.id, selected: c.id === account || null }, c.nombre)));
+      select.addEventListener("change", () => { account = select.value; refresh(); });
+      picker = h("div", { class: "mailbox-picker" },
+        h("label", { class: "mp-label" }, icon("mail"), "Buzón:"), select);
+    }
+
     clear(root).append(
+      picker,
       h("div", { class: "kpis" },
         kpi("Correos en el buzón", rows.length),
         kpi("Phishing", counts.phishing, "phishing"),
@@ -285,7 +299,7 @@ export function createInbox(root, api, onOpen) {
   const move = async (uid) => {
     moved.add(uid);
     try {
-      await api.quarantine(uid);
+      await api.quarantine(uid, account || undefined);
       data.correos = data.correos.filter((c) => c.uid !== uid);
       draw();
     } catch (err) {
@@ -303,9 +317,10 @@ export function createInbox(root, api, onOpen) {
   const refresh = async (quiet = false) => {
     if (busy) return;
     busy = true;
-    if (!quiet && !root.firstChild) root.append(h("p", { class: "note" }, "Leyendo el buzón…"));
+    if (!quiet && !root.firstChild) root.append(h("p", { class: "note" }, "Leyendo el buzón… La primera vez puede tardar un poco mientras analiza cada correo; luego es instantáneo."));
     try {
-      data = await api.inbox(20);
+      data = await api.inbox(20, account || undefined);
+      if (!account && data.cuenta) account = data.cuenta;
       draw();
       if (autoQuarantine) await sweep();
     } catch (err) {
@@ -331,12 +346,12 @@ function routePanel(ruta) {
 }
 
 /* Detalle de un correo de la bandeja, dentro del diálogo. */
-export async function openInboxMessage(api, uid) {
+export async function openInboxMessage(api, uid, cuenta) {
   const dialog = $("#detail"), body = clear($("#detail-body"));
   body.append(h("p", { class: "note" }, "Cargando…"));
   if (!dialog.open) dialog.showModal();
   try {
-    const d = await api.inboxMessage(uid);
+    const d = await api.inboxMessage(uid, cuenta);
     const v = verdictKey(d.veredicto), info = VERDICTS[v];
     const r = d.remitente || {};
     const { reasons } = splitReasons(d.motivos || []);
@@ -366,6 +381,202 @@ const csvCell = (value) => {
   if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;           // evita inyección de fórmulas en Excel
   return `"${text.replaceAll('"', '""')}"`;
 };
+
+/* Panel: resumen visual calculado en el navegador a partir del historial (/api/analyses).
+   No necesita endpoints nuevos: agrega lo que ya se guardó en cada análisis. */
+const VERDICT_COLOR = { seguro: "var(--ok)", sospechoso: "var(--warn)", phishing: "var(--bad)" };
+const TYPE_OF = (u) => (u || "").startsWith("correo:") ? "correo" : (u || "").startsWith("mensaje:") ? "mensaje" : "enlace";
+
+export async function renderDashboard(root, api) {
+  clear(root).append(h("p", { class: "note" }, "Cargando panel…"));
+  let rows;
+  try {
+    rows = await api.history();
+  } catch (err) {
+    clear(root).append(alertBox(err.message));
+    return;
+  }
+
+  const total = rows.length;
+  if (!total) {
+    clear(root).append(h("div", { class: "alert info" }, icon("info"),
+      h("span", {}, "Aún no hay análisis. Analiza un enlace o un correo y el panel se irá llenando con estadísticas.")));
+    return;
+  }
+
+  const counts = { seguro: 0, sospechoso: 0, phishing: 0 };
+  const types = { enlace: 0, correo: 0, mensaje: 0 };
+  let scoreSum = 0;
+  const dayCount = {};
+  const dkey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  rows.forEach((r) => {
+    counts[verdictKey(r.veredicto)] += 1;
+    types[TYPE_OF(r.url)] += 1;
+    scoreSum += Number(r.score) || 0;
+    const d = new Date(r.created_at);
+    if (!isNaN(d)) { d.setHours(0, 0, 0, 0); dayCount[dkey(d)] = (dayCount[dkey(d)] || 0) + 1; }
+  });
+  const avg = scoreSum / total;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 9; i >= 0; i -= 1) { const d = new Date(today); d.setDate(d.getDate() - i); days.push(d); }
+  const colItems = days.map((d) => ({ label: `${d.getDate()}/${d.getMonth() + 1}`, value: dayCount[dkey(d)] || 0 }));
+
+  const kpi = (label, n, v, sub) => h("div", { class: `kpi${v ? ` v-${v}` : ""}` },
+    h("div", { class: "k" }, label), h("div", { class: "v" }, String(n)), sub ? h("div", { class: "s" }, sub) : null);
+
+  const legend = h("div", { class: "donut-legend" }, ["phishing", "sospechoso", "seguro"].map((k) =>
+    h("div", { class: "lg-item" },
+      h("i", { vars: { background: VERDICT_COLOR[k] } }),
+      h("span", { class: "lg-l" }, verdictInfo(k).titulo),
+      h("span", { class: "lg-n" }, String(counts[k])))));
+
+  const donutSegs = [
+    { value: counts.phishing, color: VERDICT_COLOR.phishing },
+    { value: counts.sospechoso, color: VERDICT_COLOR.sospechoso },
+    { value: counts.seguro, color: VERDICT_COLOR.seguro },
+  ];
+
+  const typeItems = [
+    { label: "Enlaces", value: types.enlace, color: "var(--accent)" },
+    { label: "Correos", value: types.correo, color: "var(--accent2)" },
+    { label: "Mensajes", value: types.mensaje, color: "#5eb8a0" },
+  ];
+
+  const avgBand = avg >= BANDS.phishing ? "phishing" : avg >= BANDS.sospechoso ? "sospechoso" : "seguro";
+
+  clear(root).append(
+    h("div", { class: "kpis" },
+      kpi("Análisis en total", total, "", `${pct(counts.phishing / total)} fueron phishing`),
+      kpi("Phishing", counts.phishing, "phishing"),
+      kpi("Sospechosos", counts.sospechoso, "sospechoso"),
+      kpi("Seguros", counts.seguro, "seguro")),
+    h("div", { class: "grid-2" },
+      h("div", { class: "panel" },
+        h("h3", {}, "Actividad por día"),
+        h("p", { class: "sub" }, "Análisis realizados en los últimos 10 días."),
+        charts.columns(colItems)),
+      h("div", { class: "panel" },
+        h("h3", {}, "Distribución de veredictos"),
+        h("p", { class: "sub" }, "Cómo se repartieron todos los análisis."),
+        h("div", { class: "donut-panel" }, charts.donut(donutSegs), legend))),
+    h("div", { class: "grid-2" },
+      h("div", { class: "panel" },
+        h("h3", {}, "Por tipo de análisis"),
+        h("p", { class: "sub" }, "Qué se revisó: enlaces, correos o mensajes de texto."),
+        charts.countBars(typeItems)),
+      h("div", { class: `panel v-${avgBand}` },
+        h("h3", {}, "Riesgo promedio"),
+        h("p", { class: "sub" }, "Puntaje medio de todos los análisis guardados."),
+        charts.gauge(avg))));
+}
+
+/* Prueba real: matriz de confusión con los correos reales que pasaron por el detector.
+   El usuario marca la "verdad" (legítimo / phishing) de cada correo; se guarda en este
+   navegador (localStorage) y la matriz + métricas se recalculan en vivo. Sin cambios en el backend. */
+const TRUTH_KEY = (id) => `pd_truth_${id}`;
+function getTruth(id) { try { return localStorage.getItem(TRUTH_KEY(id)) || ""; } catch { return ""; } }
+function setTruth(id, val) {
+  try { if (val) localStorage.setItem(TRUTH_KEY(id), val); else localStorage.removeItem(TRUTH_KEY(id)); } catch { /* sin almacenamiento */ }
+}
+
+export async function renderRealEval(root, api) {
+  clear(root).append(h("p", { class: "note" }, "Cargando correos analizados…"));
+  let rows;
+  try {
+    rows = (await api.history()).sort((a, b) => b.id - a.id);
+  } catch (err) {
+    clear(root).append(alertBox(err.message));
+    return;
+  }
+
+  let scope = "correo"; // "correo" = solo correos del servidor; "todos" = cualquier análisis
+
+  const draw = () => {
+    const items = scope === "correo" ? rows.filter((r) => TYPE_OF(r.url) === "correo") : rows;
+
+    let tp = 0, fp = 0, fn = 0, tn = 0, labeled = 0;
+    items.forEach((r) => {
+      const t = getTruth(r.id);
+      if (!t) return;
+      labeled += 1;
+      const flagged = verdictKey(r.veredicto) !== "seguro"; // el detector lo marcó (sospechoso o phishing)
+      const realPhish = t === "phishing";
+      if (flagged && realPhish) tp += 1;
+      else if (flagged && !realPhish) fp += 1;
+      else if (!flagged && realPhish) fn += 1;
+      else tn += 1;
+    });
+
+    const safeDiv = (a, b) => (b ? a / b : null);
+    const acc = safeDiv(tp + tn, labeled);
+    const prec = safeDiv(tp, tp + fp);
+    const rec = safeDiv(tp, tp + fn);
+    const f1 = (prec != null && rec != null && prec + rec > 0) ? (2 * prec * rec) / (prec + rec) : null;
+    const show = (x) => (x == null ? "—" : pct(x, 1));
+
+    const metric = (label, value, sub) => h("div", { class: "kpi" },
+      h("div", { class: "k" }, label), h("div", { class: "v" }, value), sub ? h("div", { class: "s" }, sub) : null);
+
+    const cell = (value, total, good) => h("div", { class: `cell ${good ? "good" : "bad"}`, vars: { "--ci": `${15 + 55 * (value / (total || 1))}%` } },
+      h("b", {}, String(value)), total ? `${(100 * value / total).toFixed(0)}%` : "0%");
+    const legitRow = tn + fp, phishRow = fn + tp;
+    const matrix = h("div", { class: "cm" },
+      h("span"), h("span", { class: "h" }, "Predicho: legítimo"), h("span", { class: "h" }, "Predicho: phishing"),
+      h("span", { class: "h" }, "Real: legítimo"), cell(tn, legitRow, true), cell(fp, legitRow, false),
+      h("span", { class: "h" }, "Real: phishing"), cell(fn, phishRow, false), cell(tp, phishRow, true));
+
+    // Control de alcance (correos / todos)
+    const scopeChip = (key, label) => h("button", { type: "button", class: `chip${scope === key ? " active" : ""}`,
+      onclick: () => { scope = key; draw(); } }, label);
+
+    // Fila de etiquetado
+    const truthBtn = (r, val, label, cls) => {
+      const on = getTruth(r.id) === val;
+      return h("button", { type: "button", class: `truth-btn ${cls}${on ? " on" : ""}`,
+        "aria-pressed": String(on),
+        onclick: () => { setTruth(r.id, on ? "" : val); draw(); } }, label);
+    };
+    const body = items.map((r) => {
+      const subject = (r.url || "").replace(/^correo:\s*/, "").replace(/^mensaje:\s*/, "");
+      return h("tr", {},
+        h("td", { class: "subj-cell" }, subject || "(sin asunto)"),
+        h("td", {}, pill(r.veredicto)),
+        h("td", { class: "truth-cell" },
+          h("div", { class: "truth-btns" }, truthBtn(r, "legit", "Legítimo", "legit"), truthBtn(r, "phishing", "Phishing", "phish"))));
+    });
+
+    const anyLabeled = labeled > 0;
+    const resetBtn = h("button", { type: "button", class: "btn ghost tiny",
+      onclick: () => { items.forEach((r) => setTruth(r.id, "")); draw(); } }, "Reiniciar etiquetas");
+
+    clear(root).append(
+      h("div", { class: "chips scope-chips" }, scopeChip("correo", "Solo correos"), scopeChip("todos", "Todos los análisis")),
+      h("div", { class: "kpis" },
+        metric("Exactitud", show(acc), "aciertos / total etiquetado"),
+        metric("Precisión", show(prec), "de lo marcado, cuánto era phishing"),
+        metric("Sensibilidad", show(rec), "del phishing real, cuánto detectó"),
+        metric("Puntaje F1", show(f1), "equilibrio precisión/sensibilidad")),
+      h("div", { class: "grid-2" },
+        h("div", { class: "panel" },
+          h("h3", {}, "Marca la verdad de cada correo"),
+          h("p", { class: "sub" }, "Tú sabes cuáles enviaste como phishing y cuáles como correo normal. Márcalo aquí; se guarda en este navegador."),
+          items.length
+            ? h("div", { class: "table-wrap" }, h("table", { class: "truth-table" },
+                h("thead", {}, h("tr", {}, h("th", {}, "Asunto"), h("th", {}, "Detector"), h("th", {}, "Verdad real"))),
+                h("tbody", {}, body)))
+            : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Aún no hay correos analizados. Ve a la Bandeja, analiza los correos de prueba y vuelve aquí.")),
+          items.length ? h("div", { class: "note-row" }, resetBtn) : null),
+        h("div", { class: "panel" },
+          h("h3", {}, "Matriz de confusión"),
+          h("p", { class: "sub" }, "Se considera que el detector “marcó” un correo cuando su veredicto fue Sospechoso o Phishing."),
+          anyLabeled ? matrix : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Marca al menos un correo para empezar a construir la matriz.")),
+          h("p", { class: "note" }, `${labeled} de ${items.length} correos etiquetados.`))));
+  };
+
+  draw();
+}
 
 export function createHistory(root, api, onOpen) {
   let rows = [], filter = "todos";

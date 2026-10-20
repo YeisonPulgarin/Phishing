@@ -1,11 +1,11 @@
 /* PhishShield: punto de entrada de la interfaz (acceso, navegación y formularios). */
 import { Api, keyStore } from "./js/api.js";
 import { $, $$, h, clear, icon, alertBox } from "./js/dom.js";
-import { createHistory, createInbox, openDetail, openInboxMessage, renderEvaluation, renderHow, renderResult } from "./js/views.js";
+import { createHistory, createInbox, openDetail, openInboxMessage, renderDashboard, renderEvaluation, renderRealEval, renderHow, renderResult } from "./js/views.js";
 
 const api = new Api();
 const history = createHistory($("#history-root"), api, (id) => openDetail(api, id));
-const inbox = createInbox($("#inbox-root"), api, (uid) => openInboxMessage(api, uid));
+const inbox = createInbox($("#inbox-root"), api, (uid, cuenta) => openInboxMessage(api, uid, cuenta));
 
 /* ---------------------------------------------------------------- tema */
 const root = document.documentElement;
@@ -29,10 +29,9 @@ let healthTimer = null;
 function enter() {
   $("#login-view").classList.add("hidden");
   $("#shell").classList.remove("hidden");
-  showView("analizar");
+  showView("panel");
   checkHealth();
   if (!healthTimer) healthTimer = setInterval(checkHealth, 20000);
-  $("#url-input").focus();
 }
 
 function logout(message = "") {
@@ -77,6 +76,8 @@ let inboxTimer = null;
 function showView(name) {
   $$("[data-view].view").forEach((v) => v.classList.toggle("hidden", v.dataset.view !== name));
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+  if (name === "panel") renderDashboard($("#panel-root"), api);
+  if (name === "evalreal") renderRealEval($("#evalreal-root"), api);
   if (name === "historial") history.refresh();
   if (name === "evaluacion" && !evaluationLoaded) { evaluationLoaded = true; renderEvaluation($("#eval-root"), api); }
   // La bandeja se relee sola mientras está a la vista: en la demo el correo aparece solo.
