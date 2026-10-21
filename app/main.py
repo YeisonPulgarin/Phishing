@@ -37,6 +37,10 @@ async def security_headers(request: Request, call_next):
     path = request.url.path
     if path == "/" or path.startswith("/static/"):
         response.headers.setdefault("Content-Security-Policy", _UI_CSP)
+        # "no-cache" = el navegador puede guardar los archivos, pero debe preguntar si
+        # cambiaron antes de usarlos (responde 304 si no). Sin esto, tras actualizar la
+        # interfaz el navegador mezclaba módulos JS nuevos con otros viejos de su caché.
+        response.headers.setdefault("Cache-Control", "no-cache")
     if path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")  # los análisis son datos del usuario
     return response

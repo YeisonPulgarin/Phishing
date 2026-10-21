@@ -74,6 +74,8 @@ def test_ui_responses_carry_a_strict_csp_and_hardening_headers():
         assert "unsafe-inline" not in csp and "unsafe-eval" not in csp
         assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
         assert h["referrer-policy"] == "no-referrer"
+        # Tras actualizar la interfaz, el navegador debe revalidar y no usar módulos viejos.
+        assert h["cache-control"] == "no-cache"
 
 
 def test_api_responses_are_not_cached_and_docs_keep_working_without_the_ui_csp():

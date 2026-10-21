@@ -101,6 +101,15 @@ sin adjuntos) y los evalúa con el mismo pipeline que una URL. Suma señales pro
 típico de phishing, nombre de remitente que suplanta una marca, `Reply-To` distinto del
 remitente, enlaces cuyo texto no coincide con su destino y fallos SPF/DKIM/DMARC.
 
+Los **archivos adjuntos** se revisan sin abrirlos ni ejecutarlos (`app/core/attachments.py`):
+nombre, tipo declarado y firma del contenido. Se marcan como peligrosos los programas y scripts
+(`.exe`, `.scr`, `.js`, `.vbs`, `.ps1`, `.hta`, `.lnk`…), la doble extensión (`factura.pdf.exe`),
+el truco RTLO (carácter invisible que invierte el nombre), los archivos disfrazados (dicen ser
+`.pdf` o `.jpg` pero su firma es la de un programa), las imágenes de disco (`.iso`, `.img`) y los
+`.zip` que esconden un ejecutable; los documentos con macros, los adjuntos HTML/SVG y los `.zip`
+con contraseña se marcan para revisar. Un adjunto peligroso pesa como un enlace peligroso en el
+puntaje del correo.
+
 ```bash
 curl -X POST http://localhost:8000/api/analyze-email \
   -H "Content-Type: application/json" -H "X-API-Key: dev-key" \

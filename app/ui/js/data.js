@@ -29,7 +29,27 @@ export const COMPONENT_NAMES = {
   heuristica: "Reglas heurísticas", red: "Verificación de red", ml: "Modelo de IA",
   google_safe_browsing: "Google Safe Browsing", virustotal: "VirusTotal",
   enlaces: "Enlaces del mensaje", remitente: "Dominio del remitente", senales_mensaje: "Señales del mensaje",
+  adjuntos: "Archivos adjuntos",
 };
+
+/* Riesgo de un adjunto → color (clase de veredicto) y etiqueta corta. */
+export const ATTACH_RISK = {
+  alto: { v: "phishing", label: "Peligroso" },
+  medio: { v: "sospechoso", label: "Revisar" },
+  bajo: { v: "seguro", label: "Normal" },
+};
+
+/* Tamaño legible (B, KB, MB). */
+export const fmtBytes = (n) => {
+  const b = Number(n) || 0;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+};
+
+/* Hace visibles los caracteres invisibles que invierten el texto (truco RTLO), para que el
+   nombre del adjunto se vea como es de verdad y no como el atacante quiere que se vea. */
+export const revealName = (name) => String(name || "").replace(/[‪-‮⁦-⁩‎‏]/g, "[RTLO]");
 
 /* Orden en que se muestran los motivos agrupados por fuente. */
 export const ENGINE_ORDER = ["heuristica", "ml", "red", "google_safe_browsing", "virustotal"];

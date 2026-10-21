@@ -240,6 +240,12 @@ tbody tr.click { cursor: pointer; } tbody tr.click:hover { background: var(--pan
 .truth-btn.on.phish { background: color-mix(in srgb, var(--bad) 16%, var(--panel)); border-color: var(--bad); color: var(--bad); font-weight: 700; }
 .note-row { margin-top: 14px; }
 
+/* ---------- Adjuntos (clip en la bandeja) ---------- */
+.clip { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; font-size: 12px; font-weight: 600;
+  color: var(--muted); vertical-align: middle; font-variant-numeric: tabular-nums; }
+.clip .icon { width: 14px; height: 14px; }
+.clip.danger { color: var(--bad); }
+
 /* ---------- Selector de buzón (bandeja multi-cuenta) ---------- */
 .mailbox-picker { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .mp-label { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: var(--muted); font-weight: 600; }

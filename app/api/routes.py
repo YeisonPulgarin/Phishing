@@ -66,7 +66,8 @@ class AuthRequest(BaseModel):
 class EmailRequest(BaseModel):
     """Correo completo en formato .eml (`raw`) o campos sueltos (`subject`, `sender`, `body`)."""
 
-    raw: Optional[str] = Field(default=None, max_length=300_000)
+    # 5 MB: un .eml con adjuntos crece ~33 % por la codificación base64.
+    raw: Optional[str] = Field(default=None, max_length=5_000_000)
     subject: Optional[str] = Field(default=None, max_length=1_000)
     sender: Optional[str] = Field(default=None, max_length=500)
     body: Optional[str] = Field(default=None, max_length=200_000)
@@ -260,6 +261,8 @@ def inbox(
             "confianza": result.get("confianza"),
             "motivos": (result.get("motivos") or [])[:3],
             "enlaces": len(result.get("enlaces") or []),
+            "adjuntos": len(result.get("adjuntos") or []),
+            "adjuntos_riesgo": sum(1 for a in (result.get("adjuntos") or []) if a.get("riesgo") != "bajo"),
         })
     return info
 

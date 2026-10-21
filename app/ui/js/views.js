@@ -2,8 +2,8 @@
 import { h, clear, icon, alertBox, $ } from "./dom.js";
 import * as charts from "./charts.js";
 import {
-  BANDS, COMPONENT_NAMES, ENGINE_ORDER, METRICS, MODEL_NAMES, PART_LABELS, SYSTEMS, THRESHOLDS, VERDICTS,
-  fmtDate, num3, partFor, pct, splitReasons, verdictInfo, verdictKey,
+  ATTACH_RISK, BANDS, COMPONENT_NAMES, ENGINE_ORDER, METRICS, MODEL_NAMES, PART_LABELS, SYSTEMS, THRESHOLDS, VERDICTS,
+  fmtBytes, fmtDate, num3, partFor, pct, revealName, splitReasons, verdictInfo, verdictKey,
 } from "./data.js";
 
 const pill = (v) => (v ? h("span", { class: `pill v-${verdictKey(v)}` }, verdictInfo(v).titulo) : h("span", { class: "pill none" }, "Sin dato"));
@@ -72,6 +72,30 @@ function linksTable(enlaces) {
     h("tbody", {}, rows)));
 }
 
+/* "Qué hacer": si lo que delata al correo son sus adjuntos, el consejo empieza por ellos. */
+function adviceFor(info, d) {
+  const risky = (d?.adjuntos || []).some((a) => a.riesgo !== "bajo");
+  if (!risky) return info.recomendacion;
+  if (d.enlaces?.length) return `No abras los archivos adjuntos. ${info.recomendacion}`;
+  return "No abras ni descargues los archivos adjuntos, y no respondas. Si ya abriste alguno, "
+    + "desconecta el equipo de la red y avisa al encargado de sistemas.";
+}
+
+/* Adjuntos revisados: nombre (con trucos invisibles a la vista), riesgo, tamaño y por qué. */
+function attachmentsTable(adjuntos) {
+  const rows = adjuntos.map((a) => {
+    const r = ATTACH_RISK[a.riesgo] || ATTACH_RISK.bajo;
+    return h("tr", {},
+      h("td", { class: "wrap mono" }, revealName(a.nombre)),
+      h("td", {}, h("span", { class: `pill v-${r.v}` }, r.label)),
+      h("td", { class: "num" }, fmtBytes(a.tamano)),
+      h("td", { class: "wrap" }, (a.motivos || []).slice(0, 2).join("; ") || "Sin señales de riesgo"));
+  });
+  return h("div", { class: "table-wrap" }, h("table", {},
+    h("thead", {}, h("tr", {}, h("th", {}, "Archivo"), h("th", {}, "Riesgo"), h("th", { class: "num" }, "Tamaño"), h("th", {}, "Por qué"))),
+    h("tbody", {}, rows)));
+}
+
 /* Líneas que son avisos técnicos, no señales de riesgo: se muestran atenuadas. */
 const QUIET = /no disponible|no respondió|sin señales/i;
 
@@ -131,7 +155,7 @@ function urlDissection(partes, porMotor) {
 function summaryText(res) {
   const d = res.data, info = verdictInfo(d.veredicto);
   const target = res.tipo === "url" ? d.url : res.tipo === "correo" ? `Correo: ${d.asunto || "(sin asunto)"}` : "Mensaje analizado";
-  const lines = [`PhishShield — ${info.titulo} (${Math.round(d.score)}/100)`, target, "", `Qué hacer: ${info.recomendacion}`];
+  const lines = [`PhishShield — ${info.titulo} (${Math.round(d.score)}/100)`, target, "", `Qué hacer: ${adviceFor(info, d)}`];
   const { reasons } = splitReasons(d.motivos || []);
   if (reasons.length) lines.push("", "Señales:", ...reasons.slice(0, 6).map((r) => `• ${r}`));
   return lines.join("\n");
@@ -196,7 +220,7 @@ export function renderResult(root, res, api) {
       h("h2", { class: "verdict-headline" }, info.titular),
       h("p", { class: "verdict-sum" }, info.resumen),
       metaBits.length ? h("p", { class: "verdict-meta" }, metaBits.join(" · ")) : null,
-      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), info.recomendacion),
+      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), adviceFor(info, d)),
       topSignals.length
         ? h("div", { class: "signals" },
             h("h3", {}, "Señales principales"),
@@ -213,6 +237,11 @@ export function renderResult(root, res, api) {
   if (res.tipo !== "url") {
     body.append(h("section", { class: "panel" }, h("h3", {}, "Enlaces encontrados"),
       d.enlaces?.length ? linksTable(d.enlaces) : h("p", { class: "note" }, "El mensaje no contiene enlaces.")));
+  }
+  if (res.tipo === "correo" && d.adjuntos?.length) {
+    body.append(h("section", { class: "panel" }, h("h3", {}, "Archivos adjuntos"),
+      h("p", { class: "sub" }, "Se revisan sin abrirlos ni ejecutarlos: nombre, tipo y firma del contenido."),
+      attachmentsTable(d.adjuntos)));
   }
   body.append(explainPanel(api, explainTargets(res)));
 
@@ -259,7 +288,13 @@ export function createInbox(root, api, onOpen) {
       return h("tr", { class: "click", tabindex: "0", onclick: open,
         onkeydown: (e) => { if (e.key === "Enter") open(); } },
         h("td", {}, pill(r.veredicto)),
-        h("td", { class: "wrap" }, h("div", { class: "subj" }, r.asunto),
+        h("td", { class: "wrap" }, h("div", { class: "subj" }, r.asunto,
+          r.adjuntos
+            ? h("span", {
+                class: `clip${r.adjuntos_riesgo ? " danger" : ""}`,
+                title: r.adjuntos_riesgo ? `${r.adjuntos_riesgo} adjunto(s) riesgoso(s)` : `${r.adjuntos} adjunto(s)`,
+              }, icon("clip"), String(r.adjuntos))
+            : null),
           h("div", { class: "muted mono from" }, from)),
         h("td", { class: "num" }, String(Math.round(r.score))),
         h("td", {}, r.fecha ? fmtDate(r.fecha) : "—"),
@@ -361,13 +396,14 @@ export async function openInboxMessage(api, uid, cuenta) {
         h("div", {}, pill(d.veredicto), `  ${Math.round(d.score)}/100`),
         h("div", { class: "mono" }, r.direccion ? `${r.nombre || ""} <${r.direccion}>`.trim() : "remitente no identificado"),
         h("div", {}, d.asunto || "(sin asunto)")),
-      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), info.recomendacion),
+      h("div", { class: "todo" }, h("b", {}, "Qué hacer"), adviceFor(info, d)),
       h("h4", { class: "gap" }, "Por qué"),
       h("ul", { class: "reasons" }, reasons.map((x) => h("li", {}, x))),
       // El desglose deja ver de dónde sale cada punto, incluso cuando ninguna señal
       // llegó al umbral para aparecer en la lista de arriba.
       bars.length ? [h("h4", { class: "gap" }, "De dónde sale el puntaje"), charts.scoreBars(bars)] : null,
       d.enlaces?.length ? [h("h4", { class: "gap" }, "Enlaces encontrados"), linksTable(d.enlaces)] : null,
+      d.adjuntos?.length ? [h("h4", { class: "gap" }, "Archivos adjuntos"), attachmentsTable(d.adjuntos)] : null,
       routePanel(d.ruta)));
   } catch (err) {
     clear(body).append(alertBox(err.message));
@@ -759,7 +795,7 @@ export function renderHow(root) {
     h("section", { class: "panel" }, h("h3", {}, "Del enlace al veredicto"),
       h("p", { class: "sub" }, "Cada fuente aporta un puntaje de riesgo y un combinador ponderado los une en un número de 0 a 100."),
       h("div", { class: "flow" },
-        h("div", { class: "col" }, node("Enlace", "Una URL directa"), node("Correo", "Remitente, enlaces y señales del mensaje"), node("Mensaje (SMS)", "Texto y enlaces que contiene")),
+        h("div", { class: "col" }, node("Enlace", "Una URL directa"), node("Correo", "Remitente, enlaces, adjuntos y señales del mensaje"), node("Mensaje (SMS)", "Texto y enlaces que contiene")),
         h("div", { class: "arrow" }, "→"),
         h("div", { class: "col" },
           node("Reglas heurísticas", "IP en vez de dominio, @ en la dirección, terminaciones abusadas, acortadores, palabras que piden credenciales, imitación de marcas"),
@@ -772,7 +808,7 @@ export function renderHow(root) {
       h("div", { class: "bands" }, band("seguro", `0 – ${BANDS.sospechoso - 1}`), band("sospechoso", `${BANDS.sospechoso} – ${BANDS.phishing - 1}`), band("phishing", `${BANDS.phishing} – 100`))),
     h("section", { class: "panel" }, h("h3", {}, "Privacidad y seguridad"),
       h("ul", { class: "list" },
-        h("li", {}, "El detector no abre ni descarga archivos adjuntos."),
+        h("li", {}, "Los archivos adjuntos nunca se abren ni se ejecutan: solo se revisan su nombre, su tipo y la firma de su contenido."),
         h("li", {}, "No se conecta a direcciones privadas ni locales aunque se las pidan (protección SSRF)."),
         h("li", {}, "Los análisis se guardan en el historial del servidor; no se envían a terceros salvo los servicios opcionales que tú configures."),
         h("li", {}, "Ninguna herramienta es infalible: ante la duda, confirma con la entidad por otro canal."))));

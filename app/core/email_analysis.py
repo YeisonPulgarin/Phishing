@@ -6,7 +6,8 @@ ingresada directamente (heurística + red + ML). Suma señales propias del mensa
 palabras sospechosas en asunto y cuerpo, nombre de remitente que suplanta una marca,
 Reply-To distinto del remitente, enlaces cuyo texto no coincide con su destino y fallos de
 autenticación SPF/DKIM/DMARC. El análisis del cuerpo se limita a palabras clave, sin
-procesamiento de lenguaje natural. No se procesan archivos adjuntos.
+procesamiento de lenguaje natural. Los archivos adjuntos se revisan sin abrirlos ni
+ejecutarlos (nombre, tipo declarado y firma del contenido; ver `app.core.attachments`).
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from typing import List, Optional
 
 from bs4 import BeautifulSoup
 
+from app.core.attachments import Attachment, classify as classify_attachment, safe_name
 from app.core.config import Settings
 from app.core.pipeline import AnalysisPipeline
 from app.engines.base import AnalysisContext
@@ -28,6 +30,7 @@ from app.engines.heuristic import BRANDS
 
 MAX_URLS = 5            # enlaces analizados por mensaje (los demás se informan)
 MAX_BONUS = 50.0        # tope de lo que suman las señales del mensaje
+MAX_ATTACHMENTS = 20    # adjuntos revisados por mensaje
 
 # Palabras y frases típicas de phishing/smishing (sin tildes, en minúsculas).
 KEYWORDS = [
@@ -109,6 +112,7 @@ class ParsedMessage:
     auth_failures: List[str] = field(default_factory=list)
     route: List[str] = field(default_factory=list)   # saltos Received, del origen al destino
     route_has_public: bool = False                   # ¿pasó por alguna IP de internet?
+    attachments: List[Attachment] = field(default_factory=list)
 
 
 def extract_urls(text: str) -> List[str]:
@@ -120,6 +124,27 @@ def extract_urls(text: str) -> List[str]:
             seen.add(url)
             out.append(url)
     return out
+
+
+def _is_attachment(part) -> bool:
+    """Una parte es adjunto si así lo declara o si trae nombre de archivo. Las imágenes
+    incrustadas en el cuerpo (logos de una firma) no se cuentan como adjuntos."""
+    disposition = part.get_content_disposition()
+    if disposition == "attachment":
+        return True
+    if not part.get_filename():
+        return False
+    return not (disposition == "inline" and part.get_content_maintype() == "image")
+
+
+def _read_attachment(part) -> Attachment:
+    try:
+        data = part.get_payload(decode=True) or b""
+    except Exception:
+        data = b""
+    if isinstance(data, str):
+        data = data.encode("utf-8", "replace")
+    return classify_attachment(part.get_filename(), part.get_content_type(), data)
 
 
 def parse_email(raw: str) -> ParsedMessage:
@@ -143,8 +168,13 @@ def parse_email(raw: str) -> ParsedMessage:
     texts: List[str] = []
     urls: List[str] = []
     for part in msg.walk():
-        if part.is_multipart() or part.get_content_disposition() == "attachment":
-            continue  # los adjuntos quedan fuera del alcance
+        if part.is_multipart():
+            continue
+        if _is_attachment(part):
+            # Se revisa como archivo; su contenido no cuenta como texto del mensaje.
+            if len(parsed.attachments) < MAX_ATTACHMENTS:
+                parsed.attachments.append(_read_attachment(part))
+            continue
         ctype = part.get_content_type()
         if ctype not in ("text/plain", "text/html"):
             continue
@@ -221,13 +251,19 @@ class EmailAnalyzer:
         signals, bonus = self._message_signals(msg)
         url_scores = [r.score for u in urls if (r := reports.get(f"url:{u}")) is not None]
         sender_score = sender_report.score if sender_report is not None else 0.0
-        base = max(url_scores + [sender_score * 0.8], default=0.0)
+        # Un adjunto peligroso pesa como un enlace peligroso: puede decidir el veredicto solo.
+        attach_score = max((a.score for a in msg.attachments), default=0.0)
+        base = max(url_scores + [sender_score * 0.8, attach_score], default=0.0)
         score = round(min(100.0, base + min(bonus, MAX_BONUS)), 1)
 
-        analyzed = len(url_scores) + (1 if sender_report is not None else 0)
+        analyzed = (len(url_scores) + (1 if sender_report is not None else 0)
+                    + (1 if msg.attachments else 0))
         confianza = round(min(1.0, 0.3 + 0.15 * analyzed + (0.1 if signals else 0.0)), 2)
 
-        reasons = list(signals)
+        # Los adjuntos riesgosos van primero: son la señal más directa del mensaje.
+        risky = sorted((a for a in msg.attachments if a.riesgo != "bajo"), key=lambda a: -a.score)
+        reasons = [f"Adjunto «{safe_name(a.nombre)}»: {a.motivos[0]}" for a in risky]
+        reasons += signals
         for item in url_results:
             if item["score"] is not None and item["score"] >= self._settings.bands["sospechoso"]:
                 reasons.append(f"Enlace {item['url']}: " + "; ".join(item["motivos"][:3]))
@@ -238,6 +274,12 @@ class EmailAnalyzer:
             reasons.append(f"El mensaje trae {len(msg.urls)} enlaces; se analizaron los primeros {MAX_URLS}")
         if not reasons:
             reasons.append("No se encontraron señales de phishing en el mensaje")
+
+        desglose = {"enlaces": round(max(url_scores, default=0.0), 1),
+                    "remitente": round(sender_score, 1),
+                    "senales_mensaje": round(min(bonus, MAX_BONUS), 1)}
+        if msg.attachments:
+            desglose["adjuntos"] = round(attach_score, 1)
 
         return {
             "tipo": msg.kind,
@@ -251,9 +293,8 @@ class EmailAnalyzer:
             "motivos": reasons,
             "enlaces": url_results,
             "dominio_remitente": self._summary(msg.sender_domain, sender_report) if msg.sender_domain else None,
-            "desglose": {"enlaces": round(max(url_scores, default=0.0), 1),
-                         "remitente": round(sender_score, 1),
-                         "senales_mensaje": round(min(bonus, MAX_BONUS), 1)},
+            "adjuntos": [a.as_dict() for a in msg.attachments],
+            "desglose": desglose,
             "ruta": {"saltos": msg.route, "paso_por_internet": msg.route_has_public},
         }
 
