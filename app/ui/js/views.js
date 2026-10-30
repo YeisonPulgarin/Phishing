@@ -14,9 +14,7 @@ const desgloseItems = (d) => Object.entries(d || {}).map(([k, v]) => ({ label: C
 const explainCache = new Map();
 
 function explainPanel(api, targets) {
-  const panel = h("section", { class: "panel" },
-    h("h3", {}, "Qué miró el modelo de IA"),
-    h("p", { class: "sub" }, "Cuánto empujó cada rasgo del dominio hacia phishing."));
+  const panel = h("section", { class: "panel" }, h("h3", {}, "Qué miró el modelo de IA"));
   if (!targets.length) {
     panel.append(h("p", { class: "note" }, "Este mensaje no tiene un dominio que explicar."));
     return panel;
@@ -35,13 +33,12 @@ function explainPanel(api, targets) {
     const items = exp.contribuciones.map((c) => ({ label: c.descripcion, hint: c.valor_texto, contribution: Number(c.contribucion) }));
     const prob = pct(exp.probabilidad_phishing);
     const caption = exp.unidad === "puntos porcentuales"
-      ? `Dominio analizado: ${exp.dominio} · El modelo parte de ${Number(exp.valor_base).toFixed(0)}% y estima ${prob} de probabilidad de phishing.`
-      : `Dominio analizado: ${exp.dominio} · Probabilidad estimada por el modelo: ${prob}.`;
+      ? `${exp.dominio} · de ${Number(exp.valor_base).toFixed(0)}% a ${prob} de probabilidad de phishing`
+      : `${exp.dominio} · ${prob} de probabilidad de phishing`;
     clear(body).append(
       h("p", { class: "note mono-line" }, caption),
       charts.contributionBars(items),
-      h("div", { class: "legend" }, h("span", {}, h("i", { class: "up" }), "sube el riesgo"), h("span", {}, h("i", { class: "down" }), "baja el riesgo")),
-      h("p", { class: "note" }, "Explica el modelo de IA por sí solo. El resultado final también considera las reglas, la verificación de red y la reputación del dominio."));
+      h("div", { class: "legend" }, h("span", {}, h("i", { class: "up" }), "sube el riesgo"), h("span", {}, h("i", { class: "down" }), "baja el riesgo")));
   };
   if (targets.length > 1) {
     const select = h("select", { "aria-label": "Dominio a explicar" }, targets.map((t) => h("option", { value: t }, t)));
@@ -99,21 +96,26 @@ function attachmentsTable(adjuntos) {
 /* Líneas que son avisos técnicos, no señales de riesgo: se muestran atenuadas. */
 const QUIET = /no disponible|no respondió|sin señales/i;
 
-/* "¿Por qué?" agrupado por la fuente que encontró cada señal (reglas, modelo, red, servicios). */
-function reasonsByEngine(porMotor, desglose) {
-  const extra = Object.keys(porMotor).filter((k) => !ENGINE_ORDER.includes(k));
-  const keys = ENGINE_ORDER.filter((k) => porMotor[k]).concat(extra);
-  const groups = keys.map((k) => {
+/* Cada fuente con su puntaje y, debajo, las señales que encontró. Las que no están configuradas
+   (sin API key) no ocupan un bloque: se resumen en una sola línea al final. */
+function sourcesPanel(porMotor, desglose, alreadyShown = () => false) {
+  const scored = Object.keys(desglose || {});
+  const keys = ENGINE_ORDER.filter((k) => scored.includes(k) || porMotor[k])
+    .concat(scored.filter((k) => !ENGINE_ORDER.includes(k)), Object.keys(porMotor).filter((k) => !ENGINE_ORDER.includes(k) && !scored.includes(k)));
+  const off = [];
+  const rows = keys.map((k) => {
+    const signals = (porMotor[k] || []).filter((m) => !QUIET.test(m) && !alreadyShown(k, m));
     const has = Object.prototype.hasOwnProperty.call(desglose || {}, k);
-    return h("div", { class: "reasons-group" },
-      h("div", { class: "rg-head" },
-        h("b", {}, COMPONENT_NAMES[k] || k),
-        h("span", { class: "rg-score" }, has ? `${Math.round(desglose[k])}/100` : "sin puntaje")),
-      h("ul", { class: "reasons" }, porMotor[k].map((m) => h("li", { class: QUIET.test(m) ? "quiet" : null }, m))));
+    if (!has && !signals.length) { off.push(COMPONENT_NAMES[k] || k); return null; }
+    return h("div", { class: "src" },
+      has ? charts.scoreBars([{ label: COMPONENT_NAMES[k] || k, value: Number(desglose[k]) }])
+          : h("div", { class: "src-name" }, COMPONENT_NAMES[k] || k),
+      signals.length ? h("ul", { class: "src-signals" }, signals.map((m) => h("li", {}, m))) : null);
   });
   return h("section", { class: "panel" },
-    h("h3", {}, "Por qué"),
-    groups);
+    h("h3", {}, "De dónde sale el puntaje"),
+    rows,
+    off.length ? h("p", { class: "note" }, `Sin configurar: ${off.join(", ")}.`) : null);
 }
 
 /* Disección del enlace: muestra la URL por partes y pone cada señal debajo de la parte que la provoca. */
@@ -144,11 +146,9 @@ function urlDissection(partes, porMotor) {
 
   return h("section", { class: "panel dissect" },
     h("h3", {}, "Así se lee este enlace"),
-    h("p", { class: "sub" }, "Cada señal aparece debajo de la parte de la dirección que la provoca."),
     h("div", { class: "url-parts-scroll" }, row),
-    h("p", { class: "note real-domain" },
-      "El sitio al que realmente lleva es ", h("code", {}, partes.dominio || "—"),
-      ". Todo lo que está a su izquierda lo elige quien registró ese dominio, aunque mencione el nombre de un banco o una marca."));
+    h("p", { class: "note real-domain" }, "Lleva realmente a ", h("code", {}, partes.dominio || "—"),
+      ". Lo que está a su izquierda lo elige quien registró ese dominio."));
 }
 
 /* Texto plano del resultado, para el botón "Copiar resumen". */
@@ -196,9 +196,9 @@ function senderPanel(d) {
 
 function flatReasons(reasons, services) {
   return h("section", { class: "panel" },
-    h("h3", {}, "Por qué"),
+    h("h3", {}, "Todas las señales"),
     h("ul", { class: "reasons" }, reasons.map((r) => h("li", {}, r))),
-    services.length ? h("p", { class: "note" }, `Servicios opcionales sin configurar: ${services.join(", ")}.`) : null);
+    services.length ? h("p", { class: "note" }, `Sin configurar: ${services.join(", ")}.`) : null);
 }
 
 export function renderResult(root, res, api) {
@@ -231,16 +231,20 @@ export function renderResult(root, res, api) {
   const body = h("div", { class: "more-body" });
   if (res.tipo === "url" && d.partes) body.append(urlDissection(d.partes, porMotor));
   if (res.tipo === "correo") body.append(senderPanel(d));
-  body.append(grouped ? reasonsByEngine(porMotor, d.desglose) : flatReasons(reasons, services));
-  const bars = desgloseItems(d.desglose);
-  if (bars.length) body.append(h("section", { class: "panel" }, h("h3", {}, "De dónde sale el puntaje"), charts.scoreBars(bars)));
+  // Las señales que ya aparecen bajo su parte del enlace no se repiten; el modelo ya se ve en su barra.
+  const shownAbove = (k, m) => k === "ml" || (d.partes && ["heuristica", "red"].includes(k) && partFor(m) != null);
+  if (grouped) body.append(sourcesPanel(porMotor, d.desglose, shownAbove));
+  else {
+    const bars = desgloseItems(d.desglose);
+    if (bars.length) body.append(h("section", { class: "panel" }, h("h3", {}, "De dónde sale el puntaje"), charts.scoreBars(bars)));
+    if (reasons.length > 3 || services.length) body.append(flatReasons(reasons, services));
+  }
   if (res.tipo !== "url") {
     body.append(h("section", { class: "panel" }, h("h3", {}, "Enlaces encontrados"),
       d.enlaces?.length ? linksTable(d.enlaces) : h("p", { class: "note" }, "El mensaje no contiene enlaces.")));
   }
   if (res.tipo === "correo" && d.adjuntos?.length) {
     body.append(h("section", { class: "panel" }, h("h3", {}, "Archivos adjuntos"),
-      h("p", { class: "sub" }, "Se revisan sin abrirlos ni ejecutarlos: nombre, tipo y firma del contenido."),
       attachmentsTable(d.adjuntos)));
   }
   body.append(explainPanel(api, explainTargets(res)));
@@ -259,9 +263,8 @@ export function createInbox(root, api, onOpen) {
   const moved = new Set();                       // evita reintentar el mismo correo en cada refresco
 
   const setup = () => clear(root).append(h("div", { class: "alert info" }, icon("info"),
-    h("span", {}, "La bandeja no está conectada a un servidor de correo. Funciona cuando PhishShield corre en la misma red que el servidor del laboratorio: agrega sus datos en el archivo ",
-      h("code", {}, ".env"), " (", h("code", {}, "PD_IMAP_HOST"), " y ", h("code", {}, "PD_IMAP_ACCOUNTS"),
-      ") y reinicia el detector. En la versión publicada en internet no está disponible, porque el servidor de correo vive en una red privada; el resto de funciones sí.")));
+    h("span", {}, "Bandeja no disponible aquí: se conecta al servidor de correo del laboratorio (configúralo en ",
+      h("code", {}, ".env"), " con ", h("code", {}, "PD_IMAP_HOST"), " y ", h("code", {}, "PD_IMAP_ACCOUNTS"), ").")));
 
   const draw = () => {
     if (!data.configurada) return setup();
@@ -321,14 +324,13 @@ export function createInbox(root, api, onOpen) {
       h("label", { class: "check" },
         h("input", { type: "checkbox", checked: autoQuarantine || null,
           onchange: (e) => { autoQuarantine = e.target.checked; if (autoQuarantine) sweep(); } }),
-        `Mover automáticamente lo que sea phishing a la carpeta "${data.cuarentena}"`),
+        `Enviar el phishing a "${data.cuarentena}" automáticamente`),
       rows.length
         ? h("div", { class: "table-wrap" }, h("table", { class: "inbox" },
             h("thead", {}, h("tr", {}, h("th", {}, "Veredicto"), h("th", {}, "Correo"),
               h("th", { class: "num" }, "Puntaje"), h("th", {}, "Fecha"), h("th", {}))),
             h("tbody", {}, body)))
-        : h("div", { class: "alert info" }, icon("info"),
-            h("span", {}, "El buzón está vacío. Envía un correo desde otra cuenta y aparecerá aquí.")));
+        : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Buzón vacío.")));
   };
 
   const move = async (uid) => {
@@ -352,7 +354,7 @@ export function createInbox(root, api, onOpen) {
   const refresh = async (quiet = false) => {
     if (busy) return;
     busy = true;
-    if (!quiet && !root.firstChild) root.append(h("p", { class: "note" }, "Leyendo el buzón… La primera vez puede tardar un poco mientras analiza cada correo; luego es instantáneo."));
+    if (!quiet && !root.firstChild) root.append(h("p", { class: "note" }, "Leyendo y analizando el buzón…"));
     try {
       data = await api.inbox(20, account || undefined);
       if (!account && data.cuenta) account = data.cuenta;
@@ -436,7 +438,7 @@ export async function renderDashboard(root, api) {
   const total = rows.length;
   if (!total) {
     clear(root).append(h("div", { class: "alert info" }, icon("info"),
-      h("span", {}, "Aún no hay análisis. Analiza un enlace o un correo y el panel se irá llenando con estadísticas.")));
+      h("span", {}, "Aún no hay análisis. Empieza en ", h("b", {}, "Analizar"), ".")));
     return;
   }
 
@@ -490,21 +492,17 @@ export async function renderDashboard(root, api) {
       kpi("Seguros", counts.seguro, "seguro")),
     h("div", { class: "grid-2" },
       h("div", { class: "panel" },
-        h("h3", {}, "Actividad por día"),
-        h("p", { class: "sub" }, "Análisis realizados en los últimos 10 días."),
+        h("h3", {}, "Actividad · últimos 10 días"),
         charts.columns(colItems)),
       h("div", { class: "panel" },
-        h("h3", {}, "Distribución de veredictos"),
-        h("p", { class: "sub" }, "Cómo se repartieron todos los análisis."),
+        h("h3", {}, "Veredictos"),
         h("div", { class: "donut-panel" }, charts.donut(donutSegs), legend))),
     h("div", { class: "grid-2" },
       h("div", { class: "panel" },
-        h("h3", {}, "Por tipo de análisis"),
-        h("p", { class: "sub" }, "Qué se revisó: enlaces, correos o mensajes de texto."),
+        h("h3", {}, "Por tipo"),
         charts.countBars(typeItems)),
       h("div", { class: `panel v-${avgBand}` },
         h("h3", {}, "Riesgo promedio"),
-        h("p", { class: "sub" }, "Puntaje medio de todos los análisis guardados."),
         charts.gauge(avg))));
 }
 
@@ -590,24 +588,21 @@ export async function renderRealEval(root, api) {
     clear(root).append(
       h("div", { class: "chips scope-chips" }, scopeChip("correo", "Solo correos"), scopeChip("todos", "Todos los análisis")),
       h("div", { class: "kpis" },
-        metric("Exactitud", show(acc), "aciertos / total etiquetado"),
-        metric("Precisión", show(prec), "de lo marcado, cuánto era phishing"),
-        metric("Sensibilidad", show(rec), "del phishing real, cuánto detectó"),
-        metric("Puntaje F1", show(f1), "equilibrio precisión/sensibilidad")),
+        metric("Exactitud", show(acc)), metric("Precisión", show(prec)),
+        metric("Sensibilidad", show(rec)), metric("F1", show(f1))),
       h("div", { class: "grid-2" },
         h("div", { class: "panel" },
-          h("h3", {}, "Marca la verdad de cada correo"),
-          h("p", { class: "sub" }, "Tú sabes cuáles enviaste como phishing y cuáles como correo normal. Márcalo aquí; se guarda en este navegador."),
+          h("h3", {}, "Marca qué era cada correo"),
           items.length
             ? h("div", { class: "table-wrap" }, h("table", { class: "truth-table" },
                 h("thead", {}, h("tr", {}, h("th", {}, "Asunto"), h("th", {}, "Detector"), h("th", {}, "Verdad real"))),
                 h("tbody", {}, body)))
-            : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Aún no hay correos analizados. Ve a la Bandeja, analiza los correos de prueba y vuelve aquí.")),
+            : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Aún no hay correos analizados.")),
           items.length ? h("div", { class: "note-row" }, resetBtn) : null),
         h("div", { class: "panel" },
           h("h3", {}, "Matriz de confusión"),
-          h("p", { class: "sub" }, "Se considera que el detector “marcó” un correo cuando su veredicto fue Sospechoso o Phishing."),
-          anyLabeled ? matrix : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Marca al menos un correo para empezar a construir la matriz.")),
+          h("p", { class: "sub" }, "Marcado = Sospechoso o Phishing."),
+          anyLabeled ? matrix : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Marca al menos un correo.")),
           h("p", { class: "note" }, `${labeled} de ${items.length} correos etiquetados.`))));
   };
 
@@ -750,11 +745,11 @@ export async function renderEvaluation(root, api) {
     kpis,
     h("section", { class: "panel" },
       h("h3", {}, "Reglas vs modelo de IA vs combinado"),
-      h("p", { class: "sub" }, "Sobre dominios que el modelo no vio durante el entrenamiento. No incluye la verificación de red ni servicios externos, que dependen de consultas en vivo. En verde, el mejor valor de cada columna."),
+      h("p", { class: "sub" }, "Dominios que el modelo no vio · en verde, el mejor de cada columna."),
       tabs, tableHost),
     h("div", { class: "grid-eq" },
       h("section", { class: "panel" }, h("h3", {}, "Métricas por sistema"), barsHost),
-      h("section", { class: "panel" }, h("h3", {}, "Curvas ROC"), h("p", { class: "sub" }, "Toca un sistema en la leyenda para ocultarlo."), roc.element, roc.legend)),
+      h("section", { class: "panel" }, h("h3", {}, "Curvas ROC"), roc.element, roc.legend)),
     h("section", { class: "panel" }, h("h3", {}, "Matriz de confusión"),
       h("div", { class: "select-row" }, cmSelect), cmHost));
 
@@ -764,7 +759,6 @@ export async function renderEvaluation(root, api) {
       .map(([k, v]) => ({ label: labels[k] || k, value: v }));
     root.append(...[
       h("section", { class: "panel" }, h("h3", {}, "Regresión Logística vs Random Forest"),
-        h("p", { class: "sub" }, "El modelo se elige por F1 en validación cruzada agrupada por dominio."),
         h("div", { class: "table-wrap" }, h("table", {},
           h("thead", {}, h("tr", {}, ["Modelo", "F1 validación cruzada", "Accuracy test", "Precisión test", "Recall test", "F1 test", "AUC test"].map((t, i) => h("th", { class: i ? "num" : "" }, t)))),
           h("tbody", {}, rows.map((k) => h("tr", {}, h("td", {}, MODEL_NAMES[k] + (k === chosen ? " ✔ elegido" : "")),
@@ -775,7 +769,7 @@ export async function renderEvaluation(root, api) {
     ].filter(Boolean));
   }
 
-  root.append(h("section", { class: "panel" }, h("h3", {}, "Limitaciones que conviene conocer"),
+  root.append(h("details", { class: "panel fold-panel" }, h("summary", {}, "Limitaciones del modelo"),
     h("ul", { class: "list" },
       h("li", {}, h("b", {}, "El dataset tiene atajos. "), "En PhiUSIIL todas las URLs legítimas son https://www.dominio sin ruta. Un modelo que mira la URL completa llega a ~99% de accuracy, pero solo aprendió ese patrón. Por eso el modelo mira únicamente la estructura del dominio."),
       h("li", {}, h("b", {}, "Los subdominios legítimos parecen sospechosos "), "(el dataset casi no tiene) y se mitiga con una lista de dominios de reputación."),
@@ -790,10 +784,9 @@ export async function renderEvaluation(root, api) {
 export function renderHow(root) {
   const node = (title, text, cls = "") => h("div", { class: `node ${cls}`.trim() }, h("b", {}, title), h("span", {}, text));
   const band = (key, range) => h("div", { class: `band v-${key}` }, h("h4", {}, VERDICTS[key].titulo), h("div", { class: "rng" }, range),
-    h("p", {}, VERDICTS[key].resumen), h("p", { class: "muted" }, VERDICTS[key].recomendacion));
+    h("p", {}, VERDICTS[key].resumen));
   clear(root).append(
     h("section", { class: "panel" }, h("h3", {}, "Del enlace al veredicto"),
-      h("p", { class: "sub" }, "Cada fuente aporta un puntaje de riesgo y un combinador ponderado los une en un número de 0 a 100."),
       h("div", { class: "flow" },
         h("div", { class: "flow-col" }, node("Enlace", "Una URL directa"), node("Correo", "Remitente, enlaces, adjuntos y señales del mensaje"), node("Mensaje (SMS)", "Texto y enlaces que contiene")),
         h("div", { class: "arrow" }, "→"),

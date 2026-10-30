@@ -439,3 +439,18 @@ tbody tr.click { cursor: pointer; } tbody tr.click:hover { background: var(--pan
 .result > * + * { margin-top: 18px; }
 .grid-2 > .panel, .grid-eq > .panel { margin-top: 0; }
 [data-theme="light"] .btn.primary { color: #fff; }
+/* ---------- Fuentes del puntaje (barra + señales de cada una) ---------- */
+.src + .src { margin-top: 14px; }
+.src .bars { margin-top: 10px; }
+.src-name { font-size: 13px; color: var(--text); margin-top: 10px; }
+.src-signals { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.src-signals li { position: relative; padding-left: 14px; font-size: 13px; color: var(--muted); }
+.src-signals li::before { content: ""; position: absolute; left: 2px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--vc, var(--accent)); }
+
+/* ---------- Ejemplos de un clic y bloques plegables ---------- */
+.examples { margin-top: 12px; }
+.form-foot { display: flex; gap: 10px; flex-wrap: wrap; }
+.fold-panel > summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.fold-panel > summary:hover { color: var(--accent); }
+.fold-panel[open] > summary { margin-bottom: 6px; }
+.view-head { margin-bottom: 18px; }

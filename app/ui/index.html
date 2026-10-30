@@ -82,7 +82,6 @@
       <section id="view-panel" class="view hidden" data-view="panel">
         <header class="view-head">
           <h1>Panel</h1>
-          <p>Resumen de todo lo que el detector ha analizado.</p>
         </header>
         <div id="panel-root"></div>
       </section>
@@ -90,7 +89,6 @@
       <section id="view-analizar" class="view hidden" data-view="analizar">
         <header class="view-head">
           <h1>¿Es phishing?</h1>
-          <p>Revisa un enlace, un correo o un mensaje antes de hacer clic.</p>
         </header>
         <div id="kind-tabs" class="seg" role="tablist" aria-label="Qué quieres revisar">
           <button type="button" role="tab" class="seg-item active" data-kind="url"><svg class="icon"><use href="#i-link"/></svg>Enlace</button>
@@ -103,6 +101,12 @@
           <div class="input-row">
             <input id="url-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://ejemplo.com/login" />
             <button class="btn primary" type="submit">Analizar</button>
+          </div>
+          <div class="chips examples">
+            <span class="chips-label">Probar con:</span>
+            <button type="button" class="chip" data-example-url="http://login.paypal.com.secure-verify.tk/signin">PayPal falso</button>
+            <button type="button" class="chip" data-example-url="https://bit.ly/3xYz9Ab">Enlace acortado</button>
+            <button type="button" class="chip" data-example-url="https://www.google.com">Sitio legítimo</button>
           </div>
         </form>
 
@@ -127,6 +131,7 @@
           </div>
           <div class="form-foot">
             <button class="btn primary" type="submit">Analizar correo</button>
+            <button type="button" class="btn ghost" id="email-example">Usar un ejemplo</button>
           </div>
         </form>
 
@@ -135,6 +140,7 @@
           <textarea id="sms-text" rows="4" placeholder="Pega aquí el texto del SMS o del chat"></textarea>
           <div class="form-foot">
             <button class="btn primary" type="submit">Analizar mensaje</button>
+            <button type="button" class="btn ghost" id="sms-example">Usar un ejemplo</button>
           </div>
         </form>
 
@@ -144,7 +150,7 @@
       <!-- Bandeja (servidor de correo propio) -->
       <section id="view-bandeja" class="view hidden" data-view="bandeja">
         <header class="view-head row">
-          <div><h1>Bandeja</h1><p>Los correos que llegan a tu servidor, revisados uno por uno al entrar.</p></div>
+          <div><h1>Bandeja</h1></div>
           <div class="head-actions">
             <button id="inbox-refresh" type="button" class="btn ghost"><svg class="icon"><use href="#i-refresh"/></svg>Actualizar</button>
           </div>
@@ -155,7 +161,7 @@
       <!-- Historial -->
       <section id="view-historial" class="view hidden" data-view="historial">
         <header class="view-head row">
-          <div><h1>Historial</h1><p>Todos los análisis guardados, del más reciente al más antiguo.</p></div>
+          <div><h1>Historial</h1></div>
           <div class="head-actions">
             <button id="history-refresh" type="button" class="btn ghost"><svg class="icon"><use href="#i-refresh"/></svg>Actualizar</button>
             <button id="history-csv" type="button" class="btn ghost"><svg class="icon"><use href="#i-download"/></svg>Descargar CSV</button>
@@ -168,7 +174,6 @@
       <section id="view-evaluacion" class="view hidden" data-view="evaluacion">
         <header class="view-head">
           <h1>Evaluación</h1>
-          <p>Cómo se comparan las reglas heurísticas, el modelo de IA y el puntaje combinado.</p>
         </header>
         <div id="eval-root"></div>
       </section>
@@ -176,7 +181,6 @@
       <section id="view-evalreal" class="view hidden" data-view="evalreal">
         <header class="view-head">
           <h1>Prueba real</h1>
-          <p>Mide el acierto del detector con los correos reales que pasaron por tu servidor.</p>
         </header>
         <div id="evalreal-root"></div>
       </section>
@@ -185,7 +189,6 @@
       <section id="view-como" class="view hidden" data-view="como">
         <header class="view-head">
           <h1>Cómo funciona</h1>
-          <p>Varias fuentes de evidencia se combinan en un solo puntaje de riesgo.</p>
         </header>
         <div id="como-root"></div>
       </section>

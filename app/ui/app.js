@@ -170,6 +170,24 @@ async function run(kind, form, validate, call) {
   }
 }
 
+/* Ejemplos de un clic: llenan el formulario y lo envían (útiles en la demostración). */
+$$("[data-example-url]").forEach((b) => b.addEventListener("click", () => {
+  $("#url-input").value = b.dataset.exampleUrl;
+  $("#form-url").requestSubmit();
+}));
+$("#email-example").addEventListener("click", () => {
+  switchEmailMode("campos");
+  $("#email-subject").value = "Su cuenta será suspendida hoy";
+  $("#email-sender").value = "Soporte PayPal <seguridad@paypal-verificacion.tk>";
+  $("#email-body").value = "Estimado cliente: detectamos actividad inusual en su cuenta. "
+    + "Verifique sus datos en las próximas 24 horas o será bloqueada: http://login.paypal.com.secure-verify.tk/signin";
+  $("#form-correo").requestSubmit();
+});
+$("#sms-example").addEventListener("click", () => {
+  $("#sms-text").value = "Su clave fue bloqueada por seguridad. Reactívela urgente aquí: https://bit.ly/3xYz9Ab";
+  $("#form-mensaje").requestSubmit();
+});
+
 const value = (id) => $(id).value.trim();
 $("#form-url").addEventListener("submit", (e) => {
   e.preventDefault();
