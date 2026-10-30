@@ -18,6 +18,22 @@ function setTheme(theme) {
 setTheme(localStorage.getItem("pd_theme") === "dark" ? "dark" : "light");
 $("#theme-btn").addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
 
+/* ---------------------------------------------------------------- menú lateral plegable */
+const shell = $("#shell"), toggleBtn = $("#sidebar-toggle");
+function setCollapsed(collapsed, remember = true) {
+  shell.classList.toggle("collapsed", collapsed);
+  const label = collapsed ? "Mostrar menú" : "Ocultar menú";
+  toggleBtn.setAttribute("aria-expanded", String(!collapsed));
+  toggleBtn.setAttribute("aria-label", label);
+  toggleBtn.title = label;
+  if (remember) { try { localStorage.setItem("pd_sidebar", collapsed ? "plegado" : "abierto"); } catch { /* sin almacenamiento */ } }
+}
+let savedSidebar = null;
+try { savedSidebar = localStorage.getItem("pd_sidebar"); } catch { /* sin almacenamiento */ }
+// Sin preferencia guardada, en pantallas medianas arranca plegado para dejar espacio al contenido.
+setCollapsed(savedSidebar ? savedSidebar === "plegado" : window.innerWidth < 1100, false);
+toggleBtn.addEventListener("click", () => setCollapsed(!shell.classList.contains("collapsed")));
+
 /* ---------------------------------------------------------------- acceso */
 const loginError = (message) => {
   const box = $("#login-error");

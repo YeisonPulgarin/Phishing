@@ -259,9 +259,9 @@ export function createInbox(root, api, onOpen) {
   const moved = new Set();                       // evita reintentar el mismo correo en cada refresco
 
   const setup = () => clear(root).append(h("div", { class: "alert info" }, icon("info"),
-    h("span", {}, "La bandeja no está conectada. Agrega los datos de tu servidor de correo en el archivo ",
-      h("code", {}, ".env"), " (", h("code", {}, "PD_IMAP_HOST"), ", ", h("code", {}, "PD_IMAP_USER"),
-      ", ", h("code", {}, "PD_IMAP_PASSWORD"), ") y reinicia el detector.")));
+    h("span", {}, "La bandeja no está conectada a un servidor de correo. Funciona cuando PhishShield corre en la misma red que el servidor del laboratorio: agrega sus datos en el archivo ",
+      h("code", {}, ".env"), " (", h("code", {}, "PD_IMAP_HOST"), " y ", h("code", {}, "PD_IMAP_ACCOUNTS"),
+      ") y reinicia el detector. En la versión publicada en internet no está disponible, porque el servidor de correo vive en una red privada; el resto de funciones sí.")));
 
   const draw = () => {
     if (!data.configurada) return setup();
@@ -795,15 +795,15 @@ export function renderHow(root) {
     h("section", { class: "panel" }, h("h3", {}, "Del enlace al veredicto"),
       h("p", { class: "sub" }, "Cada fuente aporta un puntaje de riesgo y un combinador ponderado los une en un número de 0 a 100."),
       h("div", { class: "flow" },
-        h("div", { class: "col" }, node("Enlace", "Una URL directa"), node("Correo", "Remitente, enlaces, adjuntos y señales del mensaje"), node("Mensaje (SMS)", "Texto y enlaces que contiene")),
+        h("div", { class: "flow-col" }, node("Enlace", "Una URL directa"), node("Correo", "Remitente, enlaces, adjuntos y señales del mensaje"), node("Mensaje (SMS)", "Texto y enlaces que contiene")),
         h("div", { class: "arrow" }, "→"),
-        h("div", { class: "col" },
+        h("div", { class: "flow-col" },
           node("Reglas heurísticas", "IP en vez de dominio, @ en la dirección, terminaciones abusadas, acortadores, palabras que piden credenciales, imitación de marcas"),
           node("Verificación de red", "Si el dominio existe, certificado válido, antigüedad (RDAP), redirecciones y formularios de contraseña"),
           node("Modelo de IA", "Clasificador entrenado con ~235 000 URLs reales (PhiUSIIL), explicado con SHAP"),
           node("Reputación", "Para sitios muy conocidos se reduce el peso del modelo")),
         h("div", { class: "arrow" }, "→"),
-        h("div", { class: "col" }, node("Puntaje 0–100", "Combinación ponderada de las fuentes disponibles", "core"), node("Veredicto", "Seguro, sospechoso o phishing, con motivos y qué hacer", "core")))),
+        h("div", { class: "flow-col" }, node("Puntaje 0–100", "Combinación ponderada de las fuentes disponibles", "core"), node("Veredicto", "Seguro, sospechoso o phishing, con motivos y qué hacer", "core")))),
     h("section", { class: "panel" }, h("h3", {}, "Qué significa cada categoría"),
       h("div", { class: "bands" }, band("seguro", `0 – ${BANDS.sospechoso - 1}`), band("sospechoso", `${BANDS.sospechoso} – ${BANDS.phishing - 1}`), band("phishing", `${BANDS.phishing} – 100`))),
     h("section", { class: "panel" }, h("h3", {}, "Privacidad y seguridad"),

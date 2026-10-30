@@ -134,6 +134,33 @@ Las variables de entorno usan el prefijo `PD_` (ver `app/core/config.py`):
 - `PD_KNOWN_DOMAINS_PATH` — lista de dominios de reputación (default `data/known_domains.txt`).
 - `PD_ANALYSIS_TIMEOUT` — tiempo máximo total de un análisis en segundos (default `4.5`).
 
+## Publicar en internet (Vercel, gratis)
+
+Vercel detecta la app FastAPI de `app/main.py` sin configuración extra. En el plan gratuito
+(Hobby) cada análisis corre como una función de Python con hasta 2 GB de memoria y 5 minutos
+por petición, y no se "duerme" como otros planes gratuitos.
+
+1. En [vercel.com](https://vercel.com) entra con la cuenta de GitHub y elige
+   **Add New → Project → Import** sobre este repositorio.
+2. Antes de **Deploy**, abre **Environment Variables** y agrega:
+
+   | Variable | Valor | Por qué |
+   |---|---|---|
+   | `PD_API_KEYS` | una clave larga y nueva | sin ella, la clave de ejemplo `dev-key` abriría la app a cualquiera |
+   | `PD_DB_PATH` | `/tmp/phishing.db` | en Vercel solo `/tmp` admite escritura |
+   | `TLDEXTRACT_CACHE` | `/tmp/tldextract` | caché de la lista de sufijos de dominio |
+
+3. Pulsa **Deploy**. Cada `git push` a `main` vuelve a publicar la app sola.
+
+Limitaciones de la versión publicada:
+
+- **La Bandeja no funciona allí**: el servidor de correo vive en la red privada del laboratorio
+  y no es alcanzable desde internet. Para la demostración con correo real, PhishShield corre en
+  el portátil conectado a esa red.
+- **El historial es temporal**: `/tmp` se borra cuando Vercel recicla la función, así que el
+  Panel, el Historial y la Prueba real se vacían cada cierto tiempo.
+- La primera petición después de un rato sin uso tarda unos segundos más mientras carga el modelo.
+
 ## Entrenamiento del modelo
 
 El modelo se entrena con el dataset real PhiUSIIL (UCI, 235 795 URLs). El CSV no se
