@@ -20,7 +20,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 import app.core.security as security
 
@@ -222,6 +222,28 @@ def _message_date(raw: str) -> Optional[str]:
         return None
 
 
+def _persist_inbox_once(session: Session, account: str, uid: str, result: dict) -> None:
+    """Guarda en el historial cada correo de la bandeja una sola vez (así aparece en el Panel y
+    en la Prueba real). La marca `bandeja:<cuenta>:<uid>` evita duplicarlo si el servidor se
+    reinicia y vuelve a analizar el mismo correo."""
+    source = f"bandeja:{account}:{uid}"[:200]
+    try:
+        if session.exec(select(Analysis.id).where(Analysis.source == source)).first() is not None:
+            return
+        record = Analysis(
+            url=f"correo: {result.get('asunto') or '(sin asunto)'}"[:200],
+            veredicto=result["veredicto"],
+            score=int(round(result["score"])),
+            confianza=result.get("confianza") or 0.0,
+            motivos=result.get("motivos") or [],
+            desglose=result.get("desglose") or {},
+            source=source,
+        )
+        AnalysisRepository(session).create(record)
+    except Exception:  # noqa: BLE001 - el historial es secundario: la bandeja debe responder igual
+        session.rollback()
+
+
 @router.get("/inbox", status_code=200, dependencies=[Depends(require_api_key)])
 def inbox(
     limit: int = 20,
@@ -229,6 +251,7 @@ def inbox(
     mailbox: Mailbox = Depends(get_mailbox),
     analyzer: EmailAnalyzer = Depends(get_email_analyzer),
     settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_db),
 ) -> dict:
     """Correos del buzón IMAP propio, cada uno ya clasificado como phishing o normal."""
     acc = cuenta or default_account_id()
@@ -251,6 +274,7 @@ def inbox(
             result = analyzer.analyze(parse_email(message.raw))
             result["fecha"] = _message_date(message.raw)
             _inbox_cache[key] = result
+            _persist_inbox_once(session, acc, message.uid, result)
         info["correos"].append({
             "uid": message.uid,
             "fecha": result.get("fecha"),

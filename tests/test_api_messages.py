@@ -107,3 +107,31 @@ def test_explain_endpoint_with_real_model(make_client):
 def test_explain_without_model_is_503(make_client):
     r = make_client().post("/api/explain", json={"url": "https://example.com"}, headers=H)
     assert r.status_code == 503
+
+
+class _FakeMessage:
+    def __init__(self, uid, raw):
+        self.uid, self.raw = uid, raw
+
+
+class _FakeMailbox:
+    enabled = True
+
+    def fetch_recent(self, limit):
+        return [_FakeMessage("7", EML)]
+
+
+def test_inbox_emails_are_saved_once_in_history(make_client):
+    """Los correos de la bandeja quedan en el historial (Panel y Prueba real), sin duplicarse."""
+    import app.api.routes as routes
+    from app.api.deps import get_mailbox
+
+    routes._inbox_cache.clear()
+    c = make_client()
+    app.dependency_overrides[get_mailbox] = lambda: _FakeMailbox()
+    first = c.get("/api/inbox?cuenta=yeison", headers=H)
+    assert first.status_code == 200 and first.json()["correos"][0]["veredicto"] == "phishing"
+    routes._inbox_cache.clear()                     # como si el servidor se reiniciara
+    c.get("/api/inbox?cuenta=yeison", headers=H)
+    saved = [a for a in c.get("/api/analyses", headers=H).json() if a["url"].startswith("correo:")]
+    assert len(saved) == 1 and saved[0]["url"] == "correo: Verifique su cuenta"

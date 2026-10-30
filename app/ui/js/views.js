@@ -597,7 +597,7 @@ export async function renderRealEval(root, api) {
             ? h("div", { class: "table-wrap" }, h("table", { class: "truth-table" },
                 h("thead", {}, h("tr", {}, h("th", {}, "Asunto"), h("th", {}, "Detector"), h("th", {}, "Verdad real"))),
                 h("tbody", {}, body)))
-            : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Aún no hay correos analizados.")),
+            : h("div", { class: "alert info" }, icon("info"), h("span", {}, "Aún no hay correos. Abre la Bandeja o analiza uno en Analizar → Correo.")),
           items.length ? h("div", { class: "note-row" }, resetBtn) : null),
         h("div", { class: "panel" },
           h("h3", {}, "Matriz de confusión"),
